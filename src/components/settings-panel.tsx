@@ -1,0 +1,301 @@
+import { X, Volume2, Music, Info, FolderPlus } from "lucide-react"
+import { useState, useEffect } from "react"
+import { Button } from "@/components/ui/button"
+import { ScrollArea } from "@/components/ui/scroll-area"
+import { Slider } from "@/components/ui/slider"
+import { Label } from "@/components/ui/label"
+import { Switch } from "@/components/ui/switch"
+import { Separator } from "@/components/ui/separator"
+
+interface SettingsPanelProps {
+  onClose: () => void
+  onAddLibraryFolder: () => void
+  eqEnabled: boolean
+  setEqEnabled: (enabled: boolean) => void
+  activePreset: string
+  setActivePreset: (preset: string) => void
+  eqValues: number[]
+  setEqValues: (values: number[]) => void
+  crossfade: number
+  setCrossfade: (value: number) => void
+  normalize: boolean
+  setNormalize: (enabled: boolean) => void
+}
+
+const eqBands = [
+  { id: "32", label: "32Hz", defaultValue: 50 },
+  { id: "64", label: "64Hz", defaultValue: 50 },
+  { id: "125", label: "125Hz", defaultValue: 50 },
+  { id: "250", label: "250Hz", defaultValue: 50 },
+  { id: "500", label: "500Hz", defaultValue: 50 },
+  { id: "1k", label: "1kHz", defaultValue: 50 },
+  { id: "2k", label: "2kHz", defaultValue: 50 },
+  { id: "4k", label: "4kHz", defaultValue: 50 },
+  { id: "8k", label: "8kHz", defaultValue: 50 },
+  { id: "16k", label: "16kHz", defaultValue: 50 },
+]
+
+const eqPresets = [
+  { id: "flat", name: "Flat", values: [50, 50, 50, 50, 50, 50, 50, 50, 50, 50] },
+  { id: "bass", name: "Bass Boost", values: [80, 75, 65, 55, 50, 50, 50, 50, 50, 50] },
+  { id: "treble", name: "Treble Boost", values: [50, 50, 50, 50, 50, 55, 65, 75, 80, 85] },
+  { id: "vocal", name: "Vocal", values: [40, 45, 55, 65, 70, 70, 65, 55, 45, 40] },
+  { id: "rock", name: "Rock", values: [70, 65, 55, 45, 50, 55, 65, 70, 70, 70] },
+  { id: "electronic", name: "Electronic", values: [75, 70, 50, 45, 50, 60, 55, 70, 75, 75] },
+]
+
+export function SettingsPanel({ 
+  onClose, 
+  onAddLibraryFolder,
+  eqEnabled,
+  setEqEnabled,
+  activePreset,
+  setActivePreset,
+  eqValues,
+  setEqValues,
+  crossfade,
+  setCrossfade,
+  normalize,
+  setNormalize
+}: SettingsPanelProps) {
+  const [loadedFolders, setLoadedFolders] = useState<string[]>([])
+
+  useEffect(() => {
+    import("@tauri-apps/api/core").then(({ invoke }) => {
+        invoke("load_config").then((c: any) => {
+            if (c.musicFolders) setLoadedFolders(c.musicFolders)
+        })
+    })
+  }, [])
+
+  const handleRemoveFolder = async (path: string) => {
+    try {
+        const { invoke } = await import("@tauri-apps/api/core");
+        const newFolders = await invoke<string[]>("remove_music_folder", { path });
+        setLoadedFolders(newFolders);
+    } catch (e) {
+        console.error("Failed to remove folder", e);
+    }
+  }
+
+  const handlePresetChange = (presetId: string) => {
+    if (presetId === "custom") {
+      setActivePreset("custom")
+      return
+    }
+    const preset = eqPresets.find((p) => p.id === presetId)
+    if (preset) {
+      setActivePreset(presetId)
+      setEqValues([...preset.values])
+    }
+  }
+
+  const handleBandChange = (index: number, value: number[]) => {
+    const newValues = [...eqValues]
+    newValues[index] = value[0]
+    setActivePreset("custom")
+    setEqValues(newValues)
+  }
+
+  const handleAddFolder = async () => {
+     onAddLibraryFolder();
+     
+     setTimeout(() => {
+        import("@tauri-apps/api/core").then(({ invoke }) => {
+            invoke("load_config").then((c: any) => {
+                if (c.musicFolders) setLoadedFolders(c.musicFolders)
+            })
+        })
+     }, 1000)
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm">
+      <div className="w-full max-w-2xl bg-card rounded-2xl shadow-2xl border border-border overflow-hidden">
+        <div className="flex items-center justify-between p-6 border-b border-border">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-secondary flex items-center justify-center">
+              <Volume2 className="w-5 h-5 text-foreground" />
+            </div>
+            <div>
+              <h2 className="text-lg font-semibold">Settings</h2>
+              <p className="text-sm text-muted-foreground">Audio & Equalizer</p>
+            </div>
+          </div>
+          <Button variant="ghost" size="icon" className="rounded-lg" onClick={onClose}>
+            <X className="w-4 h-4" />
+          </Button>
+        </div>
+
+        <ScrollArea className="h-[calc(80vh-140px)]">
+          <div className="p-6 space-y-6">
+            <div className="space-y-4">
+              <Label className="text-sm font-medium flex items-center gap-2">
+                <FolderPlus className="w-4 h-4" />
+                Library
+              </Label>
+              <div className="bg-secondary/50 rounded-xl p-4 border border-border">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="space-y-0.5">
+                    <span className="text-sm font-medium">Music Folders</span>
+                    <p className="text-xs text-muted-foreground">Manage your music library locations</p>
+                  </div>
+                  <Button onClick={handleAddFolder} size="sm" className="rounded-lg">
+                    Add Folder
+                  </Button>
+                </div>
+                
+                <div className="space-y-2">
+                    {loadedFolders.map((folder, i) => (
+                        <div key={i} className="flex items-center justify-between bg-background/50 p-2 rounded-lg text-xs">
+                            <span className="truncate flex-1 mr-2 font-mono" title={folder}>{folder}</span>
+                            <Button 
+                                variant="ghost" 
+                                size="icon" 
+                                className="h-6 w-6 text-destructive hover:text-destructive hover:bg-destructive/10"
+                                onClick={() => handleRemoveFolder(folder)}
+                            >
+                                <X className="w-3 h-3" />
+                            </Button>
+                        </div>
+                    ))}
+                    {loadedFolders.length === 0 && (
+                        <div className="text-center py-2 text-xs text-muted-foreground italic">
+                            No folders added yet
+                        </div>
+                    )}
+                </div>
+              </div>
+            </div>
+
+            <Separator />
+
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <Label className="text-sm font-medium flex items-center gap-2">
+                  <Music className="w-4 h-4" />
+                  Equalizer
+                </Label>
+                <Switch checked={eqEnabled} onCheckedChange={setEqEnabled} />
+              </div>
+
+              {eqEnabled && (
+                <>
+                  <div className="flex flex-wrap gap-2">
+                    {eqPresets.map((preset) => (
+                      <Button
+                        key={preset.id}
+                        variant={activePreset === preset.id ? "secondary" : "outline"}
+                        size="sm"
+                        className="rounded-lg text-xs"
+                        onClick={() => handlePresetChange(preset.id)}
+                      >
+                        {preset.name}
+                      </Button>
+                    ))}
+                    <Button
+                      variant={activePreset === "custom" ? "secondary" : "outline"}
+                      size="sm"
+                      className="rounded-lg text-xs"
+                      onClick={() => handlePresetChange("custom")}
+                    >
+                      Custom
+                    </Button>
+                  </div>
+
+                  <div className="bg-secondary/50 rounded-xl p-4 border border-border">
+                    <div className="flex items-end justify-between gap-2 h-48">
+                      {eqBands.map((band, index) => (
+                        <div key={band.id} className="flex flex-col items-center flex-1 h-full">
+                          <div className="flex-1 flex items-center justify-center w-full">
+                            <Slider
+                              orientation="vertical"
+                              value={[eqValues[index]]}
+                              onValueChange={(value) => handleBandChange(index, value)}
+                              max={100}
+                              min={0}
+                              step={1}
+                              className="h-full"
+                            />
+                          </div>
+                          <span className="text-[10px] text-muted-foreground mt-2 whitespace-nowrap">{band.label}</span>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="flex justify-between text-[10px] text-muted-foreground mt-3 px-1">
+                      <span>+12dB</span>
+                      <span>0dB</span>
+                      <span>-12dB</span>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+
+            <Separator />
+
+            <div className="space-y-4">
+              <Label className="text-sm font-medium">Playback</Label>
+
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">Crossfade</span>
+                  <span className="text-sm font-medium tabular-nums">{crossfade}s</span>
+                </div>
+                <Slider
+                  value={[crossfade]}
+                  onValueChange={(value) => setCrossfade(value[0])}
+                  max={12}
+                  min={0}
+                  step={1}
+                  className="w-full"
+                />
+              </div>
+
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <div className="text-sm font-medium">Normalize Volume</div>
+                  <div className="text-xs text-muted-foreground">
+                    Automatically adjust volume to the same level
+                  </div>
+                </div>
+                <Switch
+                  checked={normalize}
+                  onCheckedChange={setNormalize}
+                />
+              </div>
+            </div>
+
+            <Separator />
+
+            <div className="space-y-3">
+              <Label className="text-sm font-medium flex items-center gap-2">
+                <Info className="w-4 h-4" />
+                About
+              </Label>
+              <div className="bg-secondary/50 rounded-xl p-4 border border-border space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Version</span>
+                  <span>1.0.0</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Built for</span>
+                  <span>Tauri v2</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </ScrollArea>
+
+        <div className="flex items-center justify-end gap-2 p-6 border-t border-border">
+          <Button variant="ghost" onClick={onClose} className="rounded-lg">
+            Close
+          </Button>
+          <Button onClick={onClose} className="rounded-lg">
+            Save Changes
+          </Button>
+        </div>
+      </div>
+    </div>
+  )
+}
