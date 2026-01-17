@@ -2,7 +2,7 @@
 <div align="center">
   <h1 align="center">Saxon</h1>
   
-  <img src="https://github.com/user-attachments/assets/9990259d-66b6-4042-8e8c-2f8d8835a499" alt="Saxon Logo" width="1231" />
+  <img src="https://github.com/user-attachments/assets/1a2d0990-651d-47d5-bc11-235767fe0a0e" alt="Saxon Logo" width="1231" />
   <p align="center">
     A modern, high-performance, and cross-platform music player
     <br />
