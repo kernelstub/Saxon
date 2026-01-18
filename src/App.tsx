@@ -32,7 +32,7 @@ function App() {
   const [eqEnabled, setEqEnabled] = useState(true)
   const [eqPreset, setEqPreset] = useState("flat")
   const [eqValues, setEqValues] = useState<number[]>([50, 50, 50, 50, 50, 50, 50, 50, 50, 50])
-  const [crossfade, setCrossfade] = useState(5)
+  const [crossfade, setCrossfade] = useState(0)
   const [normalize, setNormalize] = useState(false)
   const eqPresetRef = useRef(eqPreset)
   const crossfadeTimerRef = useRef<number | null>(null)
@@ -52,6 +52,24 @@ function App() {
     isShuffled: false,
     repeatMode: "off",
   });
+
+  const playerStateRef = useRef(playerState)
+  const tracksRef = useRef<Track[]>([])
+  const currentTrackRef = useRef<Track | null>(null)
+  const playbackHistoryRef = useRef<string[]>([])
+  const playTrackRef = useRef<((track: Track, useCrossfade: boolean) => void) | null>(null)
+
+  useEffect(() => {
+    playerStateRef.current = playerState
+  }, [playerState])
+
+  useEffect(() => {
+    tracksRef.current = tracks
+  }, [tracks])
+
+  useEffect(() => {
+    currentTrackRef.current = currentTrack
+  }, [currentTrack])
 
   const audioRef = useRef<HTMLAudioElement>(new Audio());
   const audioPathRef = useRef<string | null>(null);
@@ -315,48 +333,6 @@ function App() {
     }
   }, [eqValues, eqEnabled, normalize])
 
-  useEffect(() => {
-    const audio = audioRef.current
-
-    const handleTimeUpdate = () => {
-      setPlayerState((prev) => ({ ...prev, currentTime: audio.currentTime }))
-    }
-
-    const handleLoadedMetadata = () => {
-      setPlayerState((prev) => ({ ...prev, duration: audio.duration }))
-    }
-
-    const handleEnded = () => {
-      setPlayerState((prev) => ({ ...prev, isPlaying: false, currentTime: 0 }))
-    }
-
-    const handleError = () => {
-      setPlayerState((prev) => ({ ...prev, isPlaying: false }))
-    }
-
-    audio.addEventListener("timeupdate", handleTimeUpdate)
-    audio.addEventListener("loadedmetadata", handleLoadedMetadata)
-    audio.addEventListener("ended", handleEnded)
-    audio.addEventListener("error", handleError)
-
-    return () => {
-      audio.pause()
-      audio.removeEventListener("timeupdate", handleTimeUpdate)
-      audio.removeEventListener("loadedmetadata", handleLoadedMetadata)
-      audio.removeEventListener("ended", handleEnded)
-      audio.removeEventListener("error", handleError)
-      if (audioContextRef.current) {
-        try {
-          audioContextRef.current.close()
-        } catch {}
-      }
-      for (const url of audioCacheRef.current.values()) URL.revokeObjectURL(url)
-      audioCacheRef.current.clear()
-      if (audioBlobUrlRef.current) URL.revokeObjectURL(audioBlobUrlRef.current)
-      audioBlobUrlRef.current = null
-    }
-  }, []);
-
   const startPlayback = async (track: Track) => {
     const audio = audioRef.current
 
@@ -481,6 +457,10 @@ function App() {
     }
 
     const playNext = () => {
+        const prev = currentTrackRef.current
+        if (prev && prev.audioUrl !== track.audioUrl) {
+          playbackHistoryRef.current = [...playbackHistoryRef.current, prev.audioUrl].slice(-100)
+        }
         setCurrentTrack(track);
         void ensureCoverForAudioUrl(track.audioUrl)
         setPlayerState((prev) => ({
@@ -527,23 +507,155 @@ function App() {
     }
   }, [addToRecent, crossfade, playerState.isPlaying, playerState.volume, playerState.isMuted, ensureCoverForAudioUrl]);
 
+  useEffect(() => {
+    playTrackRef.current = playTrack
+  }, [playTrack])
+
+  useEffect(() => {
+    if (!currentTrack) return
+    const match =
+      tracks.find((t) => t.audioUrl === currentTrack.audioUrl) ??
+      tracks.find((t) => t.id === currentTrack.id)
+    if (match && match !== currentTrack) setCurrentTrack(match)
+  }, [tracks, currentTrack])
+
   const handleTrackSelect = useCallback((track: Track) => {
     playTrack(track, false);
   }, [playTrack]);
 
-  const handleNext = (auto: boolean = false) => {
-    if (!currentTrack) return;
-    const currentIndex = tracks.findIndex((t) => t.id === currentTrack.id);
-    const nextIndex = (currentIndex + 1) % tracks.length;
-    playTrack(tracks[nextIndex], auto);
-  };
+  const resolveTrackIndex = (list: Track[], track: Track) => {
+    const byUrl = list.findIndex((t) => t.audioUrl === track.audioUrl)
+    if (byUrl !== -1) return byUrl
+    const byId = list.findIndex((t) => t.id === track.id)
+    return byId === -1 ? 0 : byId
+  }
 
-  const handlePrevious = () => {
-    if (!currentTrack) return;
-    const currentIndex = tracks.findIndex((t) => t.id === currentTrack.id);
-    const prevIndex = (currentIndex - 1 + tracks.length) % tracks.length;
-    playTrack(tracks[prevIndex], false);
-  };
+  const handleNext = useCallback((autoOrEvent: boolean | unknown = false) => {
+    const list = tracksRef.current
+    const current = currentTrackRef.current
+    const state = playerStateRef.current
+    if (!current || list.length === 0) return
+    const auto = typeof autoOrEvent === "boolean" ? autoOrEvent : false
+
+    const currentIndex = resolveTrackIndex(list, current)
+
+    if (state.isShuffled && list.length > 1) {
+      let nextIndex = currentIndex
+      for (let attempts = 0; attempts < 8 && nextIndex === currentIndex; attempts++) {
+        nextIndex = Math.floor(Math.random() * list.length)
+      }
+      if (nextIndex === currentIndex) nextIndex = (currentIndex + 1) % list.length
+      playTrack(list[nextIndex], auto)
+      return
+    }
+
+    const nextIndex = (currentIndex + 1) % list.length
+    playTrack(list[nextIndex], auto)
+  }, [playTrack])
+
+  const handlePrevious = useCallback(() => {
+    const list = tracksRef.current
+    const current = currentTrackRef.current
+    const state = playerStateRef.current
+    if (!current || list.length === 0) return
+
+    if (state.isShuffled && playbackHistoryRef.current.length > 0) {
+      const prevAudioUrl = playbackHistoryRef.current.pop()
+      if (prevAudioUrl) {
+        const match = list.find((t) => t.audioUrl === prevAudioUrl)
+        if (match) {
+          playTrack(match, false)
+          return
+        }
+      }
+    }
+
+    const currentIndex = resolveTrackIndex(list, current)
+    const prevIndex = (currentIndex - 1 + list.length) % list.length
+    playTrack(list[prevIndex], false)
+  }, [playTrack])
+
+  useEffect(() => {
+    const audio = audioRef.current
+
+    const handleTimeUpdate = () => {
+      setPlayerState((prev) => ({ ...prev, currentTime: audio.currentTime }))
+    }
+
+    const handleLoadedMetadata = () => {
+      setPlayerState((prev) => ({ ...prev, duration: audio.duration }))
+    }
+
+    const handleEnded = () => {
+      const list = tracksRef.current
+      const current = currentTrackRef.current
+      const state = playerStateRef.current
+      const play = playTrackRef.current
+
+      if (!current || list.length === 0) {
+        setPlayerState((prev) => ({ ...prev, isPlaying: false, currentTime: 0 }))
+        return
+      }
+
+      if (state.repeatMode === "one") {
+        audio.currentTime = 0
+        void audio.play().catch(() => {})
+        setPlayerState((prev) => ({ ...prev, isPlaying: !audio.paused, currentTime: 0 }))
+        return
+      }
+
+      const currentIndex = resolveTrackIndex(list, current)
+
+      if (state.repeatMode === "off" && currentIndex === list.length - 1) {
+        setPlayerState((prev) => ({ ...prev, isPlaying: false, currentTime: 0 }))
+        return
+      }
+
+      if (!play) {
+        setPlayerState((prev) => ({ ...prev, isPlaying: false, currentTime: 0 }))
+        return
+      }
+
+      if (state.isShuffled && list.length > 1) {
+        let nextIndex = currentIndex
+        for (let attempts = 0; attempts < 8 && nextIndex === currentIndex; attempts++) {
+          nextIndex = Math.floor(Math.random() * list.length)
+        }
+        if (nextIndex === currentIndex) nextIndex = (currentIndex + 1) % list.length
+        play(list[nextIndex], false)
+        return
+      }
+
+      const nextIndex = (currentIndex + 1) % list.length
+      play(list[nextIndex], false)
+    }
+
+    const handleError = () => {
+      setPlayerState((prev) => ({ ...prev, isPlaying: false }))
+    }
+
+    audio.addEventListener("timeupdate", handleTimeUpdate)
+    audio.addEventListener("loadedmetadata", handleLoadedMetadata)
+    audio.addEventListener("ended", handleEnded)
+    audio.addEventListener("error", handleError)
+
+    return () => {
+      audio.pause()
+      audio.removeEventListener("timeupdate", handleTimeUpdate)
+      audio.removeEventListener("loadedmetadata", handleLoadedMetadata)
+      audio.removeEventListener("ended", handleEnded)
+      audio.removeEventListener("error", handleError)
+      if (audioContextRef.current) {
+        try {
+          audioContextRef.current.close()
+        } catch {}
+      }
+      for (const url of audioCacheRef.current.values()) URL.revokeObjectURL(url)
+      audioCacheRef.current.clear()
+      if (audioBlobUrlRef.current) URL.revokeObjectURL(audioBlobUrlRef.current)
+      audioBlobUrlRef.current = null
+    }
+  }, [])
 
   const handleSeek = (time: number) => {
     setPlayerState((prev) => ({ ...prev, currentTime: time }));
