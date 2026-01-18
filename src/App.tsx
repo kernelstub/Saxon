@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo, startTransition } from "react";
 import { Sidebar } from "@/components/sidebar";
 import { Header } from "@/components/header";
 import { TrackList } from "@/components/track-list";
@@ -13,6 +13,7 @@ import { readFile } from "@tauri-apps/plugin-fs";
 interface ScanResult {
   tracks: Track[];
   folders: MusicFolder[];
+  revision: string;
 }
 
 function App() {
@@ -56,6 +57,39 @@ function App() {
   const audioPathRef = useRef<string | null>(null);
   const audioBlobUrlRef = useRef<string | null>(null)
   const audioCacheRef = useRef<Map<string, string>>(new Map())
+  const coverCacheRef = useRef<Map<string, string>>(new Map())
+  const coverInFlightRef = useRef<Set<string>>(new Set())
+  const refreshInFlightRef = useRef(false)
+  const libraryRevisionRef = useRef<string | null>(null)
+
+  const applyCachedCovers = useCallback((nextTracks: Track[]) => {
+    const coverCache = coverCacheRef.current
+    return nextTracks.map((t) => {
+      const cached = coverCache.get(t.audioUrl)
+      return cached ? { ...t, coverUrl: cached } : t
+    })
+  }, [])
+
+  const ensureCoverForAudioUrl = useCallback(async (audioUrl: string) => {
+    const coverCache = coverCacheRef.current
+    if (coverCache.has(audioUrl)) return
+    if (coverInFlightRef.current.has(audioUrl)) return
+    coverInFlightRef.current.add(audioUrl)
+    try {
+      const coverUrl = await invoke<string | null>("get_cover_art", { path: audioUrl })
+      if (!coverUrl) return
+      coverCache.set(audioUrl, coverUrl)
+      setTracks((prev) => prev.map((t) => (t.audioUrl === audioUrl ? { ...t, coverUrl } : t)))
+      setCurrentTrack((prev) => (prev && prev.audioUrl === audioUrl ? { ...prev, coverUrl } : prev))
+    } catch {}
+    finally {
+      coverInFlightRef.current.delete(audioUrl)
+    }
+  }, [])
+
+  const ensureCoversForAudioUrls = useCallback((audioUrls: string[]) => {
+    for (const url of audioUrls) void ensureCoverForAudioUrl(url)
+  }, [ensureCoverForAudioUrl])
 
   const ensureAudioGraph = useCallback(async () => {
     const audio = audioRef.current
@@ -153,7 +187,6 @@ function App() {
       try {
         const prunedPaths = await invoke<string[]>("prune_music_folders");
         const config = await invoke<AppConfig>("load_config");
-        console.log("Loaded config:", config);
         
         setFavorites(new Set(config.favorites || []));
         setRecentTracks(config.recentTracks || []);
@@ -179,8 +212,15 @@ function App() {
             result.folders.forEach((f) => foldersByPath.set(f.path, f));
           });
 
-          setTracks(Array.from(tracksByPath.values()));
-          setFolders(Array.from(foldersByPath.values()));
+          const combinedRevision = results.map((r) => r.revision).join("|")
+          libraryRevisionRef.current = combinedRevision
+
+          const nextTracks = applyCachedCovers(Array.from(tracksByPath.values()))
+          const nextFolders = Array.from(foldersByPath.values())
+          startTransition(() => {
+            setTracks(nextTracks)
+            setFolders(nextFolders)
+          })
         }
       } catch (error) {
         console.error("Failed to load config:", error);
@@ -192,6 +232,9 @@ function App() {
 
   useEffect(() => {
     const refreshLibrary = async () => {
+      if (document.hidden) return
+      if (refreshInFlightRef.current) return
+      refreshInFlightRef.current = true
       try {
         const config = await invoke<AppConfig>("load_config");
         const folders = config.musicFolders || [];
@@ -203,6 +246,10 @@ function App() {
             ),
           );
 
+          const combinedRevision = results.map((r) => r.revision).join("|")
+          if (libraryRevisionRef.current === combinedRevision) return
+          libraryRevisionRef.current = combinedRevision
+
           const tracksByPath = new Map<string, Track>();
           const foldersByPath = new Map<string, MusicFolder>();
 
@@ -211,11 +258,17 @@ function App() {
             result.folders.forEach((f) => foldersByPath.set(f.path, f));
           });
 
-          setTracks(Array.from(tracksByPath.values()));
-          setFolders(Array.from(foldersByPath.values()));
+          const nextTracks = applyCachedCovers(Array.from(tracksByPath.values()))
+          const nextFolders = Array.from(foldersByPath.values())
+          startTransition(() => {
+            setTracks(nextTracks)
+            setFolders(nextFolders)
+          })
         }
       } catch (error) {
         console.error("Failed to refresh library:", error);
+      } finally {
+        refreshInFlightRef.current = false
       }
     };
 
@@ -429,6 +482,7 @@ function App() {
 
     const playNext = () => {
         setCurrentTrack(track);
+        void ensureCoverForAudioUrl(track.audioUrl)
         setPlayerState((prev) => ({
           ...prev,
           isPlaying: true,
@@ -471,7 +525,7 @@ function App() {
         else if (audioRef.current) audioRef.current.volume = playerState.volume;
         playNext();
     }
-  }, [addToRecent, crossfade, playerState.isPlaying, playerState.volume, playerState.isMuted]);
+  }, [addToRecent, crossfade, playerState.isPlaying, playerState.volume, playerState.isMuted, ensureCoverForAudioUrl]);
 
   const handleTrackSelect = useCallback((track: Track) => {
     playTrack(track, false);
@@ -564,31 +618,31 @@ function App() {
     });
   }, []);
 
-  const filteredTracks = tracks.filter(t => {
-      if (searchQuery) {
-          const q = searchQuery.toLowerCase();
-          const matches = t.title.toLowerCase().includes(q) || 
-                          t.artist.toLowerCase().includes(q) || 
-                          t.album.toLowerCase().includes(q);
-          if (!matches) return false;
-      }
-      
-      if (view === "favorites") {
-          return favorites.has(t.id);
-      }
-      
-      if (view === "recent") {
-        return recentTracks.includes(t.id);
+  const filteredTracks = useMemo(() => {
+    const q = searchQuery ? searchQuery.toLowerCase() : ""
+    return tracks.filter((t) => {
+      if (q) {
+        const matches =
+          t.title.toLowerCase().includes(q) ||
+          t.artist.toLowerCase().includes(q) ||
+          t.album.toLowerCase().includes(q)
+        if (!matches) return false
       }
 
-      return true;
-  });
+      if (view === "favorites") return favorites.has(t.id)
+      if (view === "recent") return recentTracks.includes(t.id)
+      return true
+    })
+  }, [tracks, searchQuery, view, favorites, recentTracks])
 
-  const sortedTracks = view === "recent" && !searchQuery
-    ? [...filteredTracks].sort((a, b) => {
-        return recentTracks.indexOf(a.id) - recentTracks.indexOf(b.id);
-      })
-    : filteredTracks;
+  const sortedTracks = useMemo(() => {
+    if (view === "recent" && !searchQuery) {
+      return [...filteredTracks].sort((a, b) => recentTracks.indexOf(a.id) - recentTracks.indexOf(b.id))
+    }
+    return filteredTracks
+  }, [filteredTracks, view, searchQuery, recentTracks])
+
+  const favoritesArray = useMemo(() => Array.from(favorites), [favorites])
 
   const handleFolderSelect = useCallback((folder: MusicFolder | null) => {
     setSelectedFolder(folder);
@@ -628,9 +682,10 @@ function App() {
               isPlaying={playerState.isPlaying}
               selectedFolder={view === "favorites" || view === "recent" || searchQuery ? null : selectedFolder}
               onFolderSelect={setSelectedFolder}
-              favorites={Array.from(favorites)}
+              favorites={favoritesArray}
               onToggleFavorite={handleToggleFavorite}
               ignoreFolderFilter={view === "favorites" || view === "recent" || !!searchQuery}
+              onNeedCovers={ensureCoversForAudioUrls}
             />
           ) : (
             <NowPlaying

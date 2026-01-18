@@ -1,7 +1,12 @@
 use base64::prelude::*;
 use lofty::{Accessor, AudioFile, Probe, TaggedFileExt};
 use serde::{Deserialize, Serialize};
+use std::collections::hash_map::DefaultHasher;
+use std::collections::{HashMap, HashSet};
+use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
+use std::sync::{LazyLock, Mutex};
+use std::time::{SystemTime, UNIX_EPOCH};
 use walkdir::WalkDir;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -32,6 +37,7 @@ struct MusicFolder {
 struct ScanResult {
     tracks: Vec<Track>,
     folders: Vec<MusicFolder>,
+    revision: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
@@ -207,7 +213,20 @@ fn prune_music_folders(app: tauri::AppHandle) -> Result<Vec<String>, String> {
     Ok(config.music_folders)
 }
 
-use std::collections::HashMap;
+#[derive(Clone)]
+struct CachedTrack {
+    track: Track,
+    modified: u64,
+    size: u64,
+}
+
+#[derive(Default)]
+struct CachedLibrary {
+    tracks: HashMap<String, CachedTrack>,
+}
+
+static SCAN_CACHE: LazyLock<Mutex<HashMap<String, CachedLibrary>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
 
 #[tauri::command]
 fn remove_music_folder(app: tauri::AppHandle, path: String) -> Result<Vec<String>, String> {
@@ -231,17 +250,95 @@ fn remove_music_folder(app: tauri::AppHandle, path: String) -> Result<Vec<String
 
 #[tauri::command]
 async fn scan_music_library(path: String) -> Result<ScanResult, String> {
+    tauri::async_runtime::spawn_blocking(move || scan_music_library_blocking(path))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+fn to_unix_seconds(time: SystemTime) -> u64 {
+    time.duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
+}
+
+fn get_file_stamp(path: &Path) -> Option<(u64, u64)> {
+    let meta = std::fs::metadata(path).ok()?;
+    let modified = meta.modified().ok().map(to_unix_seconds).unwrap_or(0);
+    Some((modified, meta.len()))
+}
+
+fn parse_track_metadata(entry_path: &Path, folder_id: Option<String>) -> Track {
+    let entry_path_str = entry_path.to_string_lossy().to_string();
+    match Probe::open(entry_path)
+        .map_err(|e| e.to_string())
+        .and_then(|p| p.read().map_err(|e| e.to_string()))
+    {
+        Ok(tagged_file) => {
+            let tag = tagged_file.primary_tag();
+            let title = entry_path
+                .file_stem()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string();
+            let artist = tag
+                .and_then(|t| t.artist().map(|s| s.to_string()))
+                .unwrap_or("Unknown Artist".to_string());
+            let album = tag
+                .and_then(|t| t.album().map(|s| s.to_string()))
+                .unwrap_or("Unknown Album".to_string());
+            let duration = tagged_file.properties().duration().as_secs();
+            Track {
+                id: entry_path_str.clone(),
+                title,
+                artist,
+                album,
+                duration,
+                cover_url: None,
+                audio_url: entry_path_str,
+                folder_id,
+            }
+        }
+        Err(e) => {
+            eprintln!("Error reading file {:?}: {}", entry_path, e);
+            Track {
+                id: entry_path_str.clone(),
+                title: entry_path
+                    .file_stem()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .to_string(),
+                artist: "Unknown".to_string(),
+                album: "Unknown".to_string(),
+                duration: 0,
+                cover_url: None,
+                audio_url: entry_path_str,
+                folder_id,
+            }
+        }
+    }
+}
+
+fn scan_music_library_blocking(path: String) -> Result<ScanResult, String> {
+    let root_path_buf = std::fs::canonicalize(&path).unwrap_or_else(|_| PathBuf::from(&path));
+    let root_path = root_path_buf.as_path();
+    let root_path_key = root_path.to_string_lossy().to_string().to_lowercase();
+
+    let mut cached_tracks = {
+        let mut guard = SCAN_CACHE.lock().map_err(|_| "cache lock poisoned".to_string())?;
+        std::mem::take(
+            &mut guard
+                .entry(root_path_key.clone())
+                .or_default()
+                .tracks,
+        )
+    };
+
     let mut tracks = Vec::new();
     let mut folders = Vec::new();
     let mut folder_map: HashMap<String, String> = HashMap::new();
+    let mut folder_index_by_id: HashMap<String, usize> = HashMap::new();
+    let mut hasher = DefaultHasher::new();
+    let mut seen_tracks: HashSet<String> = HashSet::new();
 
-    let root_path_buf = std::fs::canonicalize(&path).unwrap_or_else(|_| PathBuf::from(&path));
-    let root_path = root_path_buf.as_path();
-    let root_id = root_path.to_string_lossy().to_string(); 
-    
-    let root_path_key = root_path.to_string_lossy().to_string().to_lowercase();
-    
-    folder_map.insert(root_path_key.clone(), root_id.clone());
+    folder_map.insert(root_path_key.clone(), root_path.to_string_lossy().to_string());
 
     for entry in WalkDir::new(&root_path_buf)
         .sort_by_file_name()
@@ -263,18 +360,25 @@ async fn scan_music_library(path: String) -> Result<ScanResult, String> {
             };
             let depth = rel.components().count();
 
-            let parent_path = entry_path.parent().unwrap();
+            let parent_path = match entry_path.parent() {
+                Some(p) => p,
+                None => continue,
+            };
             let parent_path_key = parent_path.to_string_lossy().to_string().to_lowercase();
-            
+
             let parent_id = if depth == 1 {
                 None
             } else {
                 folder_map.get(&parent_path_key).cloned()
             };
-            
+
             let id = entry_path_str.clone();
-            let name = entry_path.file_name().unwrap_or_default().to_string_lossy().to_string();
-            
+            let name = entry_path
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string();
+
             folders.push(MusicFolder {
                 id: id.clone(),
                 parent_id,
@@ -282,88 +386,112 @@ async fn scan_music_library(path: String) -> Result<ScanResult, String> {
                 path: entry_path_str.clone(),
                 track_count: 0,
             });
+            folder_index_by_id.insert(id.clone(), folders.len() - 1);
             folder_map.insert(entry_path_key.clone(), id);
+
+            entry_path_key.hash(&mut hasher);
+            if let Ok(meta) = std::fs::metadata(entry_path) {
+                let modified = meta.modified().ok().map(to_unix_seconds).unwrap_or(0);
+                modified.hash(&mut hasher);
+            }
         } else if entry_path.is_file() {
-            if let Some(extension) = entry_path.extension() {
-                let ext = extension.to_string_lossy().to_lowercase();
-                if ["mp3", "wav", "ogg", "flac", "m4a", "aac"].contains(&ext.as_str()) {
-                    let parent_path = entry_path.parent().unwrap();
-                    let parent_path_key = parent_path.to_string_lossy().to_string().to_lowercase();
+            let extension = match entry_path.extension() {
+                Some(e) => e,
+                None => continue,
+            };
+            let ext = extension.to_string_lossy().to_lowercase();
+            if !["mp3", "wav", "ogg", "flac", "m4a", "aac"].contains(&ext.as_str()) {
+                continue;
+            }
 
-                    let folder_id = match parent_path.strip_prefix(root_path) {
-                        Ok(r) if r.components().count() == 0 => None,
-                        Ok(_) => folder_map.get(&parent_path_key).cloned(),
-                        Err(_) => None,
-                    };
+            let (modified, size) = match get_file_stamp(entry_path) {
+                Some(s) => s,
+                None => continue,
+            };
 
-                    if let Some(fid) = &folder_id {
-                        if let Some(folder) = folders.iter_mut().find(|f| f.id == *fid) {
-                            folder.track_count += 1;
-                        }
-                    }
+            entry_path_key.hash(&mut hasher);
+            modified.hash(&mut hasher);
+            size.hash(&mut hasher);
 
-                    match Probe::open(&entry_path)
-                        .map_err(|e| e.to_string())
-                        .and_then(|p| p.read().map_err(|e| e.to_string()))
-                    {
-                        Ok(tagged_file) => {
-                            let tag = tagged_file.primary_tag();
-                            
-                            let title = entry_path.file_stem()
-                                .unwrap_or_default()
-                                .to_string_lossy()
-                                .to_string();
-                                
-                            let artist = tag
-                                .and_then(|t| t.artist().map(|s| s.to_string()))
-                                .unwrap_or("Unknown Artist".to_string());
-                                
-                            let album = tag
-                                .and_then(|t| t.album().map(|s| s.to_string()))
-                                .unwrap_or("Unknown Album".to_string());
-                                
-                            let duration = tagged_file.properties().duration().as_secs();
+            let parent_path = match entry_path.parent() {
+                Some(p) => p,
+                None => continue,
+            };
+            let parent_path_key = parent_path.to_string_lossy().to_string().to_lowercase();
+            let folder_id = match parent_path.strip_prefix(root_path) {
+                Ok(r) if r.components().count() == 0 => None,
+                Ok(_) => folder_map.get(&parent_path_key).cloned(),
+                Err(_) => None,
+            };
 
-                            let mut cover_url = None;
-                            if let Some(tag) = tag {
-                                if let Some(picture) = tag.pictures().first() {
-                                    let mime = picture.mime_type().to_string();
-                                    let encoded = BASE64_STANDARD.encode(picture.data());
-                                    cover_url = Some(format!("data:{};base64,{}", mime, encoded));
-                                }
-                            }
-
-                            tracks.push(Track {
-                                id: entry_path.to_string_lossy().to_string(),
-                                title,
-                                artist,
-                                album,
-                                duration,
-                                cover_url,
-                                audio_url: entry_path.to_string_lossy().to_string(),
-                                folder_id,
-                            });
-                        }
-                        Err(e) => {
-                            eprintln!("Error reading file {:?}: {}", entry_path, e);
-                             tracks.push(Track {
-                                id: entry_path.to_string_lossy().to_string(),
-                                title: entry_path.file_stem().unwrap_or_default().to_string_lossy().to_string(),
-                                artist: "Unknown".to_string(),
-                                album: "Unknown".to_string(),
-                                duration: 0,
-                                cover_url: None,
-                                audio_url: entry_path.to_string_lossy().to_string(),
-                                folder_id,
-                            });
-                        }
+            if let Some(fid) = &folder_id {
+                if let Some(idx) = folder_index_by_id.get(fid).copied() {
+                    if let Some(folder) = folders.get_mut(idx) {
+                        folder.track_count += 1;
                     }
                 }
             }
+
+            let mut track = if let Some(cached) = cached_tracks.get(&entry_path_str) {
+                if cached.modified == modified && cached.size == size {
+                    let mut t = cached.track.clone();
+                    t.folder_id = folder_id.clone();
+                    t
+                } else {
+                    parse_track_metadata(entry_path, folder_id.clone())
+                }
+            } else {
+                parse_track_metadata(entry_path, folder_id.clone())
+            };
+
+            track.cover_url = None;
+
+            seen_tracks.insert(entry_path_str.clone());
+            cached_tracks.insert(
+                entry_path_str.clone(),
+                CachedTrack {
+                    track: track.clone(),
+                    modified,
+                    size,
+                },
+            );
+            tracks.push(track);
         }
     }
 
-    Ok(ScanResult { tracks, folders })
+    let revision = format!("{:016x}", hasher.finish());
+    cached_tracks.retain(|path, _| seen_tracks.contains(path));
+
+    {
+        let mut guard = SCAN_CACHE.lock().map_err(|_| "cache lock poisoned".to_string())?;
+        guard
+            .entry(root_path_key)
+            .or_default()
+            .tracks = cached_tracks;
+    }
+
+    Ok(ScanResult {
+        tracks,
+        folders,
+        revision,
+    })
+}
+
+#[tauri::command]
+fn get_cover_art(path: String) -> Result<Option<String>, String> {
+    let tagged_file = Probe::open(Path::new(&path))
+        .map_err(|e| e.to_string())?
+        .read()
+        .map_err(|e| e.to_string())?;
+    let tag = tagged_file.primary_tag();
+    if let Some(tag) = tag {
+        if let Some(picture) = tag.pictures().first() {
+            let mime = picture.mime_type().to_string();
+            let encoded = BASE64_STANDARD.encode(picture.data());
+            return Ok(Some(format!("data:{};base64,{}", mime, encoded)));
+        }
+    }
+    Ok(None)
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -375,6 +503,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             scan_music_library,
+            get_cover_art,
             save_config,
             load_config,
             add_music_folder,
