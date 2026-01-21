@@ -9,10 +9,13 @@ use std::sync::{LazyLock, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 use walkdir::WalkDir;
 
+mod navidrome;
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 struct Track {
     id: String,
+    canonical_id: String,
     title: String,
     artist: String,
     album: String,
@@ -20,6 +23,7 @@ struct Track {
     cover_url: Option<String>,
     audio_url: String,
     folder_id: Option<String>,
+    source: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -30,6 +34,7 @@ struct MusicFolder {
     name: String,
     path: String,
     track_count: usize,
+    source: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -59,6 +64,20 @@ struct AppConfig {
     crossfade: u32,
     #[serde(default = "default_normalize")]
     normalize: bool,
+    #[serde(default)]
+    navidrome_servers: Vec<NavidromeServerConfig>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+struct NavidromeServerConfig {
+    id: String,
+    name: String,
+    base_url: String,
+    username: String,
+    token: String,
+    salt: String,
+    enabled: bool,
 }
 
 fn default_eq_enabled() -> bool {
@@ -287,6 +306,7 @@ fn parse_track_metadata(entry_path: &Path, folder_id: Option<String>) -> Track {
             let duration = tagged_file.properties().duration().as_secs();
             Track {
                 id: entry_path_str.clone(),
+                canonical_id: entry_path_str.clone(),
                 title,
                 artist,
                 album,
@@ -294,12 +314,14 @@ fn parse_track_metadata(entry_path: &Path, folder_id: Option<String>) -> Track {
                 cover_url: None,
                 audio_url: entry_path_str,
                 folder_id,
+                source: "local".to_string(),
             }
         }
         Err(e) => {
             eprintln!("Error reading file {:?}: {}", entry_path, e);
             Track {
                 id: entry_path_str.clone(),
+                canonical_id: entry_path_str.clone(),
                 title: entry_path
                     .file_stem()
                     .unwrap_or_default()
@@ -311,6 +333,7 @@ fn parse_track_metadata(entry_path: &Path, folder_id: Option<String>) -> Track {
                 cover_url: None,
                 audio_url: entry_path_str,
                 folder_id,
+                source: "local".to_string(),
             }
         }
     }
@@ -385,6 +408,7 @@ fn scan_music_library_blocking(path: String) -> Result<ScanResult, String> {
                 name,
                 path: entry_path_str.clone(),
                 track_count: 0,
+                source: "local".to_string(),
             });
             folder_index_by_id.insert(id.clone(), folders.len() - 1);
             folder_map.insert(entry_path_key.clone(), id);
@@ -494,6 +518,62 @@ fn get_cover_art(path: String) -> Result<Option<String>, String> {
     Ok(None)
 }
 
+#[tauri::command]
+async fn navidrome_create_server(
+    name: String,
+    base_url: String,
+    username: String,
+    password: String,
+) -> Result<NavidromeServerConfig, String> {
+    let id = uuid::Uuid::new_v4().to_string();
+    let salt = uuid::Uuid::new_v4().simple().to_string();
+    let token_input = format!("{}{}", password, salt);
+    let token = format!("{:x}", md5::compute(token_input));
+
+    let server = NavidromeServerConfig {
+        id,
+        name,
+        base_url,
+        username,
+        token,
+        salt,
+        enabled: true,
+    };
+
+    navidrome::ping(&server).await?;
+    Ok(server)
+}
+
+#[tauri::command]
+async fn navidrome_test_connection(app: tauri::AppHandle, server_id: String) -> Result<(), String> {
+    let config = load_config(app)?;
+    let server = config
+        .navidrome_servers
+        .iter()
+        .find(|s| s.id == server_id)
+        .ok_or_else(|| "Navidrome server not found".to_string())?;
+    navidrome::ping(server).await?;
+    Ok(())
+}
+
+#[tauri::command]
+async fn navidrome_scan_library(app: tauri::AppHandle, server_id: String) -> Result<ScanResult, String> {
+    let config = load_config(app)?;
+    let server = config
+        .navidrome_servers
+        .iter()
+        .find(|s| s.id == server_id)
+        .ok_or_else(|| "Navidrome server not found".to_string())?;
+    if !server.enabled {
+        return Ok(ScanResult {
+            tracks: Vec::new(),
+            folders: Vec::new(),
+            revision: "disabled".to_string(),
+        });
+    }
+    navidrome::scan_library(server).await
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 #[cfg(not(rust_analyzer))]
 pub fn run() {
@@ -511,7 +591,10 @@ pub fn run() {
             remove_music_folder,
             create_folder,
             delete_track,
-            show_in_explorer
+            show_in_explorer,
+            navidrome_create_server,
+            navidrome_test_connection,
+            navidrome_scan_library
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

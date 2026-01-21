@@ -41,7 +41,18 @@ export const TrackList = memo(function TrackList({
 }: TrackListProps) {
   const displayedTracks = useMemo(() => {
     if (ignoreFolderFilter) return tracks
-    if (selectedFolder) return tracks.filter((track) => track.folderId === selectedFolder.id)
+    if (selectedFolder) {
+      if (selectedFolder.source === "navidrome") {
+        const parts = selectedFolder.id.split(":")
+        const serverId = parts.length >= 2 ? parts[1] : null
+        const isAllTracks = parts.length === 3 && parts[2] === "alltracks"
+        if (isAllTracks && serverId) {
+          const prefix = `navidrome:${serverId}:track:`
+          return tracks.filter((track) => track.id.startsWith(prefix))
+        }
+      }
+      return tracks.filter((track) => track.folderId === selectedFolder.id)
+    }
     return tracks.filter((track) => !track.folderId)
   }, [ignoreFolderFilter, tracks, selectedFolder])
 
@@ -179,10 +190,10 @@ export const TrackList = memo(function TrackList({
             className="h-8 w-8 rounded-lg"
             onClick={(e) => {
               e.stopPropagation()
-              onToggleFavorite(track.id)
+              onToggleFavorite(track.canonicalId)
             }}
           >
-            <Heart className={cn("w-4 h-4", favorites.includes(track.id) && "fill-primary text-primary")} />
+            <Heart className={cn("w-4 h-4", favorites.includes(track.canonicalId) && "fill-primary text-primary")} />
           </Button>
 
           <DropdownMenu>
@@ -192,31 +203,35 @@ export const TrackList = memo(function TrackList({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
-              <DropdownMenuItem
-                onClick={(e) => {
-                  e.stopPropagation()
-                  void invoke("show_in_explorer", { path: track.audioUrl })
-                }}
-              >
-                <ExternalLink className="w-4 h-4 mr-2" />
-                Show in Explorer
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                className="text-destructive focus:text-destructive"
-                onClick={async (e) => {
-                  e.stopPropagation()
-                  if (confirm("Are you sure you want to delete this file? This cannot be undone.")) {
-                    try {
-                      await invoke("delete_track", { path: track.audioUrl })
-                    } catch (err) {
-                      alert("Failed to delete file: " + err)
-                    }
-                  }
-                }}
-              >
-                <Trash2 className="w-4 h-4 mr-2" />
-                Delete File
-              </DropdownMenuItem>
+              {track.source === "local" && (
+                <>
+                  <DropdownMenuItem
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      void invoke("show_in_explorer", { path: track.audioUrl })
+                    }}
+                  >
+                    <ExternalLink className="w-4 h-4 mr-2" />
+                    Show in Explorer
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    className="text-destructive focus:text-destructive"
+                    onClick={async (e) => {
+                      e.stopPropagation()
+                      if (confirm("Are you sure you want to delete this file? This cannot be undone.")) {
+                        try {
+                          await invoke("delete_track", { path: track.audioUrl })
+                        } catch (err) {
+                          alert("Failed to delete file: " + err)
+                        }
+                      }
+                    }}
+                  >
+                    <Trash2 className="w-4 h-4 mr-2" />
+                    Delete File
+                  </DropdownMenuItem>
+                </>
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
         </div>

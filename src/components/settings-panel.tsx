@@ -1,4 +1,4 @@
-import { X, Volume2, Music, Info, FolderPlus } from "lucide-react"
+import { X, Volume2, Music, Info, FolderPlus, Server, RefreshCcw } from "lucide-react"
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -6,6 +6,8 @@ import { Slider } from "@/components/ui/slider"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { Separator } from "@/components/ui/separator"
+import { Input } from "@/components/ui/input"
+import type { NavidromeServerConfig } from "@/lib/types"
 
 interface SettingsPanelProps {
   onClose: () => void
@@ -59,11 +61,18 @@ export function SettingsPanel({
   setNormalize
 }: SettingsPanelProps) {
   const [loadedFolders, setLoadedFolders] = useState<string[]>([])
+  const [navidromeServers, setNavidromeServers] = useState<NavidromeServerConfig[]>([])
+  const [navidromeName, setNavidromeName] = useState("Navidrome")
+  const [navidromeBaseUrl, setNavidromeBaseUrl] = useState("")
+  const [navidromeUsername, setNavidromeUsername] = useState("")
+  const [navidromePassword, setNavidromePassword] = useState("")
+  const [navidromeBusy, setNavidromeBusy] = useState(false)
 
   useEffect(() => {
     import("@tauri-apps/api/core").then(({ invoke }) => {
         invoke("load_config").then((c: any) => {
             if (c.musicFolders) setLoadedFolders(c.musicFolders)
+            if (c.navidromeServers) setNavidromeServers(c.navidromeServers)
         })
     })
   }, [])
@@ -107,6 +116,67 @@ export function SettingsPanel({
             })
         })
      }, 1000)
+  }
+
+  const persistNavidromeServers = async (servers: NavidromeServerConfig[]) => {
+    const { invoke } = await import("@tauri-apps/api/core")
+    const c: any = await invoke("load_config")
+    await invoke("save_config", { config: { ...c, navidromeServers: servers } })
+  }
+
+  const handleAddNavidromeServer = async () => {
+    if (!navidromeBaseUrl || !navidromeUsername || !navidromePassword) return
+    setNavidromeBusy(true)
+    try {
+      const { invoke } = await import("@tauri-apps/api/core")
+      const created = await invoke<NavidromeServerConfig>("navidrome_create_server", {
+        name: navidromeName || "Navidrome",
+        baseUrl: navidromeBaseUrl,
+        username: navidromeUsername,
+        password: navidromePassword,
+      })
+      const next = [...navidromeServers, created]
+      setNavidromeServers(next)
+      await persistNavidromeServers(next)
+      setNavidromePassword("")
+    } catch (e) {
+      alert("Failed to add Navidrome server: " + e)
+    } finally {
+      setNavidromeBusy(false)
+    }
+  }
+
+  const handleRemoveNavidromeServer = async (id: string) => {
+    const next = navidromeServers.filter((s) => s.id !== id)
+    setNavidromeServers(next)
+    try {
+      await persistNavidromeServers(next)
+    } catch (e) {
+      alert("Failed to save Navidrome servers: " + e)
+    }
+  }
+
+  const handleToggleNavidromeServer = async (id: string, enabled: boolean) => {
+    const next = navidromeServers.map((s) => (s.id === id ? { ...s, enabled } : s))
+    setNavidromeServers(next)
+    try {
+      await persistNavidromeServers(next)
+    } catch (e) {
+      alert("Failed to save Navidrome servers: " + e)
+    }
+  }
+
+  const handleTestNavidromeServer = async (id: string) => {
+    setNavidromeBusy(true)
+    try {
+      const { invoke } = await import("@tauri-apps/api/core")
+      await invoke("navidrome_test_connection", { serverId: id })
+      alert("Navidrome connection OK")
+    } catch (e) {
+      alert("Navidrome connection failed: " + e)
+    } finally {
+      setNavidromeBusy(false)
+    }
   }
 
   return (
@@ -230,6 +300,100 @@ export function SettingsPanel({
                   </div>
                 </>
               )}
+            </div>
+
+            <Separator />
+
+            <div className="space-y-4">
+              <Label className="text-sm font-medium flex items-center gap-2">
+                <Server className="w-4 h-4" />
+                Navidrome
+              </Label>
+              <div className="bg-secondary/50 rounded-xl p-4 border border-border space-y-4">
+                <div className="space-y-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <Label className="text-xs text-muted-foreground">Name</Label>
+                      <Input value={navidromeName} onChange={(e) => setNavidromeName(e.target.value)} placeholder="Navidrome" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs text-muted-foreground">Base URL</Label>
+                      <Input
+                        value={navidromeBaseUrl}
+                        onChange={(e) => setNavidromeBaseUrl(e.target.value)}
+                        placeholder="https://navidrome.example.com"
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <Label className="text-xs text-muted-foreground">Username</Label>
+                      <Input value={navidromeUsername} onChange={(e) => setNavidromeUsername(e.target.value)} placeholder="username" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs text-muted-foreground">Password</Label>
+                      <Input
+                        type="password"
+                        value={navidromePassword}
+                        onChange={(e) => setNavidromePassword(e.target.value)}
+                        placeholder="password"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-xs text-muted-foreground">
+                      Saxon stores a Subsonic token + salt (not your password).
+                    </p>
+                    <Button
+                      onClick={handleAddNavidromeServer}
+                      size="sm"
+                      className="rounded-lg"
+                      disabled={navidromeBusy || !navidromeBaseUrl || !navidromeUsername || !navidromePassword}
+                    >
+                      Add Server
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  {navidromeServers.map((server) => (
+                    <div key={server.id} className="flex items-center justify-between bg-background/50 p-3 rounded-xl border border-border">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-medium truncate">{server.name}</span>
+                          <span className="text-xs text-muted-foreground truncate">{server.baseUrl}</span>
+                        </div>
+                        <div className="text-xs text-muted-foreground truncate">{server.username}</div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Switch checked={server.enabled} onCheckedChange={(v) => handleToggleNavidromeServer(server.id, v)} />
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          className="h-8 w-8 rounded-lg"
+                          onClick={() => handleTestNavidromeServer(server.id)}
+                          disabled={navidromeBusy}
+                        >
+                          <RefreshCcw className="w-4 h-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 rounded-lg text-destructive hover:text-destructive hover:bg-destructive/10"
+                          onClick={() => handleRemoveNavidromeServer(server.id)}
+                        >
+                          <X className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                  {navidromeServers.length === 0 && (
+                    <div className="text-center py-2 text-xs text-muted-foreground italic">
+                      No Navidrome servers added yet
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
 
             <Separator />

@@ -1,6 +1,6 @@
 [package]
 name = "saxon"
-version = "0.1.1"
+version = "0.1.2"
 description = "Saxon Music Player"
 authors = ["you"]
 edition = "2021"
@@ -23,3 +23,6 @@ base64 = "0.22"
 tauri-plugin-dialog = "2"
 tauri-plugin-fs = "2"
 uuid = { version = "1.19.0", features = ["v4"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+md5 = "0.7"
+serde_urlencoded = "0.7"

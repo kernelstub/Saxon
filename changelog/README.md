@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-01-21
+
+### Navidrome (Subsonic)
+- Added Navidrome server support (Subsonic REST API): connect, test, enable/disable, and persist servers in Settings.
+- Added Navidrome library browsing with an organized root: All Tracks, Artists, and Playlists.
+- Added playlist browsing and playback (playlist entries are handled correctly for favorites and recents).
+- Added Navidrome streaming playback via Subsonic `stream` URLs and cover art via `getCoverArt`.
+
 ## 2026-01-18
 
 ### Performance

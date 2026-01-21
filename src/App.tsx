@@ -79,6 +79,9 @@ function App() {
   const coverInFlightRef = useRef<Set<string>>(new Set())
   const refreshInFlightRef = useRef(false)
   const libraryRevisionRef = useRef<string | null>(null)
+  const navidromeCacheRef = useRef<{ tracks: Track[]; folders: MusicFolder[]; revisions: string[]; serverKey: string } | null>(null)
+  const navidromeLastRefreshRef = useRef(0)
+  const navidromeRefreshInFlightRef = useRef(false)
 
   const applyCachedCovers = useCallback((nextTracks: Track[]) => {
     const coverCache = coverCacheRef.current
@@ -89,6 +92,7 @@ function App() {
   }, [])
 
   const ensureCoverForAudioUrl = useCallback(async (audioUrl: string) => {
+    if (audioUrl.startsWith("http://") || audioUrl.startsWith("https://")) return
     const coverCache = coverCacheRef.current
     if (coverCache.has(audioUrl)) return
     if (coverInFlightRef.current.has(audioUrl)) return
@@ -215,25 +219,38 @@ function App() {
         if (config.crossfade !== undefined) setCrossfade(config.crossfade);
         if (config.normalize !== undefined) setNormalize(config.normalize);
 
-        if (prunedPaths.length > 0) {
-          const results = await Promise.all(
-            prunedPaths.map((path) =>
-              invoke<ScanResult>("scan_music_library", { path }),
-            ),
-          );
+        const localResults = prunedPaths.length > 0
+          ? await Promise.all(prunedPaths.map((path) => invoke<ScanResult>("scan_music_library", { path })))
+          : []
 
-          const tracksByPath = new Map<string, Track>();
+        const enabledServers = (config.navidromeServers || []).filter((s) => s.enabled)
+        const serverKey = enabledServers.map((s) => s.id).sort().join("|")
+        const navidromeResults = enabledServers.length > 0
+          ? await Promise.all(enabledServers.map((s) => invoke<ScanResult>("navidrome_scan_library", { serverId: s.id })))
+          : []
+
+        navidromeCacheRef.current = {
+          tracks: navidromeResults.flatMap((r) => r.tracks),
+          folders: navidromeResults.flatMap((r) => r.folders),
+          revisions: navidromeResults.map((r) => r.revision),
+          serverKey,
+        }
+        navidromeLastRefreshRef.current = Date.now()
+
+        const results = [...localResults, ...navidromeResults]
+        if (results.length > 0) {
+          const tracksById = new Map<string, Track>();
           const foldersByPath = new Map<string, MusicFolder>();
 
           results.forEach((result) => {
-            result.tracks.forEach((t) => tracksByPath.set(t.audioUrl, t));
+            result.tracks.forEach((t) => tracksById.set(t.id, t));
             result.folders.forEach((f) => foldersByPath.set(f.path, f));
           });
 
           const combinedRevision = results.map((r) => r.revision).join("|")
           libraryRevisionRef.current = combinedRevision
 
-          const nextTracks = applyCachedCovers(Array.from(tracksByPath.values()))
+          const nextTracks = applyCachedCovers(Array.from(tracksById.values()))
           const nextFolders = Array.from(foldersByPath.values())
           startTransition(() => {
             setTracks(nextTracks)
@@ -256,33 +273,64 @@ function App() {
       try {
         const config = await invoke<AppConfig>("load_config");
         const folders = config.musicFolders || [];
+        const enabledServers = (config.navidromeServers || []).filter((s) => s.enabled)
+        const serverKey = enabledServers.map((s) => s.id).sort().join("|")
+
+        const shouldRefreshNavidrome =
+          enabledServers.length > 0 &&
+          (!navidromeCacheRef.current ||
+            navidromeCacheRef.current.serverKey !== serverKey ||
+            Date.now() - navidromeLastRefreshRef.current > 60_000)
         
-        if (folders.length > 0) {
-          const results = await Promise.all(
-            folders.map((path) =>
-              invoke<ScanResult>("scan_music_library", { path }),
-            ),
-          );
+        const localResults = folders.length > 0
+          ? await Promise.all(folders.map((path) => invoke<ScanResult>("scan_music_library", { path })))
+          : []
 
-          const combinedRevision = results.map((r) => r.revision).join("|")
-          if (libraryRevisionRef.current === combinedRevision) return
-          libraryRevisionRef.current = combinedRevision
-
-          const tracksByPath = new Map<string, Track>();
-          const foldersByPath = new Map<string, MusicFolder>();
-
-          results.forEach((result) => {
-            result.tracks.forEach((t) => tracksByPath.set(t.audioUrl, t));
-            result.folders.forEach((f) => foldersByPath.set(f.path, f));
-          });
-
-          const nextTracks = applyCachedCovers(Array.from(tracksByPath.values()))
-          const nextFolders = Array.from(foldersByPath.values())
-          startTransition(() => {
-            setTracks(nextTracks)
-            setFolders(nextFolders)
-          })
+        if (shouldRefreshNavidrome && !navidromeRefreshInFlightRef.current) {
+          navidromeRefreshInFlightRef.current = true
+          try {
+            const navidromeResults = await Promise.all(
+              enabledServers.map((s) => invoke<ScanResult>("navidrome_scan_library", { serverId: s.id })),
+            )
+            navidromeCacheRef.current = {
+              tracks: navidromeResults.flatMap((r) => r.tracks),
+              folders: navidromeResults.flatMap((r) => r.folders),
+              revisions: navidromeResults.map((r) => r.revision),
+              serverKey,
+            }
+            navidromeLastRefreshRef.current = Date.now()
+          } finally {
+            navidromeRefreshInFlightRef.current = false
+          }
+        } else if (navidromeCacheRef.current && navidromeCacheRef.current.serverKey !== serverKey) {
+          navidromeCacheRef.current = { tracks: [], folders: [], revisions: [], serverKey }
         }
+
+        const cachedNav = navidromeCacheRef.current
+        const navidromeResultsForRevision = cachedNav ? cachedNav.revisions : []
+
+        const combinedRevision = [...localResults.map((r) => r.revision), ...navidromeResultsForRevision].join("|")
+        if (libraryRevisionRef.current === combinedRevision) return
+        libraryRevisionRef.current = combinedRevision
+
+        const tracksById = new Map<string, Track>();
+        const foldersByPath = new Map<string, MusicFolder>();
+
+        localResults.forEach((result) => {
+          result.tracks.forEach((t) => tracksById.set(t.id, t));
+          result.folders.forEach((f) => foldersByPath.set(f.path, f));
+        });
+        if (cachedNav) {
+          cachedNav.tracks.forEach((t) => tracksById.set(t.id, t))
+          cachedNav.folders.forEach((f) => foldersByPath.set(f.path, f))
+        }
+
+        const nextTracks = applyCachedCovers(Array.from(tracksById.values()))
+        const nextFolders = Array.from(foldersByPath.values())
+        startTransition(() => {
+          setTracks(nextTracks)
+          setFolders(nextFolders)
+        })
       } catch (error) {
         console.error("Failed to refresh library:", error);
       } finally {
@@ -355,9 +403,14 @@ function App() {
         audio.pause()
         audio.currentTime = 0
 
-        if (cachedUrl) {
+        if (track.source === "navidrome") {
+          audio.crossOrigin = "anonymous"
+          audio.src = track.audioUrl
+        } else if (cachedUrl) {
+          audio.crossOrigin = ""
           audio.src = cachedUrl
         } else {
+          audio.crossOrigin = ""
           const data = await readFile(track.audioUrl)
           const blob = new Blob([data], { type: getMimeType(track.audioUrl) })
           const url = URL.createObjectURL(blob)
@@ -458,8 +511,8 @@ function App() {
 
     const playNext = () => {
         const prev = currentTrackRef.current
-        if (prev && prev.audioUrl !== track.audioUrl) {
-          playbackHistoryRef.current = [...playbackHistoryRef.current, prev.audioUrl].slice(-100)
+        if (prev && prev.id !== track.id) {
+          playbackHistoryRef.current = [...playbackHistoryRef.current, prev.id].slice(-100)
         }
         setCurrentTrack(track);
         void ensureCoverForAudioUrl(track.audioUrl)
@@ -469,7 +522,7 @@ function App() {
           currentTime: 0,
           duration: track.duration,
         }));
-        addToRecent(track.id);
+        addToRecent(track.canonicalId);
         void startPlayback(track);
     };
 
@@ -514,8 +567,8 @@ function App() {
   useEffect(() => {
     if (!currentTrack) return
     const match =
-      tracks.find((t) => t.audioUrl === currentTrack.audioUrl) ??
-      tracks.find((t) => t.id === currentTrack.id)
+      tracks.find((t) => t.id === currentTrack.id) ??
+      tracks.find((t) => t.audioUrl === currentTrack.audioUrl)
     if (match && match !== currentTrack) setCurrentTrack(match)
   }, [tracks, currentTrack])
 
@@ -524,10 +577,10 @@ function App() {
   }, [playTrack]);
 
   const resolveTrackIndex = (list: Track[], track: Track) => {
-    const byUrl = list.findIndex((t) => t.audioUrl === track.audioUrl)
-    if (byUrl !== -1) return byUrl
     const byId = list.findIndex((t) => t.id === track.id)
-    return byId === -1 ? 0 : byId
+    if (byId !== -1) return byId
+    const byUrl = list.findIndex((t) => t.audioUrl === track.audioUrl)
+    return byUrl === -1 ? 0 : byUrl
   }
 
   const handleNext = useCallback((autoOrEvent: boolean | unknown = false) => {
@@ -560,9 +613,9 @@ function App() {
     if (!current || list.length === 0) return
 
     if (state.isShuffled && playbackHistoryRef.current.length > 0) {
-      const prevAudioUrl = playbackHistoryRef.current.pop()
-      if (prevAudioUrl) {
-        const match = list.find((t) => t.audioUrl === prevAudioUrl)
+      const prevId = playbackHistoryRef.current.pop()
+      if (prevId) {
+        const match = list.find((t) => t.id === prevId)
         if (match) {
           playTrack(match, false)
           return
@@ -689,6 +742,10 @@ function App() {
         alert("Please select a folder first to create a subfolder inside it.");
         return;
     }
+    if (selectedFolder.source !== "local") {
+        alert("Creating folders is only supported in local libraries.");
+        return;
+    }
     
     const name = prompt("Enter folder name:");
     if (!name) return;
@@ -741,15 +798,15 @@ function App() {
         if (!matches) return false
       }
 
-      if (view === "favorites") return favorites.has(t.id)
-      if (view === "recent") return recentTracks.includes(t.id)
+      if (view === "favorites") return favorites.has(t.canonicalId)
+      if (view === "recent") return recentTracks.includes(t.canonicalId)
       return true
     })
   }, [tracks, searchQuery, view, favorites, recentTracks])
 
   const sortedTracks = useMemo(() => {
     if (view === "recent" && !searchQuery) {
-      return [...filteredTracks].sort((a, b) => recentTracks.indexOf(a.id) - recentTracks.indexOf(b.id))
+      return [...filteredTracks].sort((a, b) => recentTracks.indexOf(a.canonicalId) - recentTracks.indexOf(b.canonicalId))
     }
     return filteredTracks
   }, [filteredTracks, view, searchQuery, recentTracks])

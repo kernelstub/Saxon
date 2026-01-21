@@ -1,5 +1,6 @@
 export interface Track {
   id: string
+  canonicalId: string
   title: string
   artist: string
   album: string
@@ -7,6 +8,7 @@ export interface Track {
   coverUrl: string | null
   audioUrl: string
   folderId: string | null
+  source: "local" | "navidrome"
 }
 
 export interface PlayerState {
@@ -25,6 +27,17 @@ export interface MusicFolder {
   name: string
   path: string
   trackCount: number
+  source: "local" | "navidrome"
+}
+
+export interface NavidromeServerConfig {
+  id: string
+  name: string
+  baseUrl: string
+  username: string
+  token: string
+  salt: string
+  enabled: boolean
 }
 
 export interface AppConfig {
@@ -36,4 +49,5 @@ export interface AppConfig {
   eqValues?: number[]
   crossfade?: number
   normalize?: boolean
+  navidromeServers?: NavidromeServerConfig[]
 }
