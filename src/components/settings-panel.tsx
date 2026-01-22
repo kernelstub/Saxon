@@ -77,7 +77,6 @@ export function SettingsPanel({
   setSelectedTheme,
   discordRichPresence,
   setDiscordRichPresence,
-  testDiscordRichPresence,
   discordRpcError,
   discordRpcTestSuccessAt
 }: SettingsPanelProps) {
