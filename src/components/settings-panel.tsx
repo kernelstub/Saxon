@@ -440,7 +440,7 @@ export function SettingsPanel({
               <div className="bg-secondary/50 rounded-xl p-4 border border-border space-y-2">
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Version</span>
-                  <span>1.0.0</span>
+                  <span>0.1.3</span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Built for</span>

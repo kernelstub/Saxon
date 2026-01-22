@@ -7,8 +7,7 @@ import { PlayerControls } from "@/components/player-controls";
 import { SettingsPanel } from "@/components/settings-panel";
 import type { Track, PlayerState, MusicFolder, AppConfig } from "@/lib/types";
 import { open } from "@tauri-apps/plugin-dialog";
-import { invoke } from "@tauri-apps/api/core";
-import { readFile } from "@tauri-apps/plugin-fs";
+import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 
 interface ScanResult {
   tracks: Track[];
@@ -73,8 +72,6 @@ function App() {
 
   const audioRef = useRef<HTMLAudioElement>(new Audio());
   const audioPathRef = useRef<string | null>(null);
-  const audioBlobUrlRef = useRef<string | null>(null)
-  const audioCacheRef = useRef<Map<string, string>>(new Map())
   const coverCacheRef = useRef<Map<string, string>>(new Map())
   const coverInFlightRef = useRef<Set<string>>(new Set())
   const refreshInFlightRef = useRef(false)
@@ -386,18 +383,6 @@ function App() {
 
     try {
       await ensureAudioGraph()
-      const getMimeType = (path: string) => {
-        const ext = path.split(".").pop()?.toLowerCase()
-        if (ext === "mp3") return "audio/mpeg"
-        if (ext === "wav") return "audio/wav"
-        if (ext === "ogg") return "audio/ogg"
-        if (ext === "flac") return "audio/flac"
-        if (ext === "m4a") return "audio/mp4"
-        if (ext === "aac") return "audio/aac"
-        return "audio/*"
-      }
-
-      const cachedUrl = audioCacheRef.current.get(track.audioUrl)
 
       if (audioPathRef.current !== track.audioUrl) {
         audio.pause()
@@ -406,25 +391,9 @@ function App() {
         if (track.source === "navidrome") {
           audio.crossOrigin = "anonymous"
           audio.src = track.audioUrl
-        } else if (cachedUrl) {
-          audio.crossOrigin = ""
-          audio.src = cachedUrl
         } else {
           audio.crossOrigin = ""
-          const data = await readFile(track.audioUrl)
-          const blob = new Blob([data], { type: getMimeType(track.audioUrl) })
-          const url = URL.createObjectURL(blob)
-          audioCacheRef.current.set(track.audioUrl, url)
-          if (audioCacheRef.current.size > 50) {
-            const firstKey = audioCacheRef.current.keys().next().value as string | undefined
-            if (firstKey) {
-              const firstUrl = audioCacheRef.current.get(firstKey)
-              if (firstUrl) URL.revokeObjectURL(firstUrl)
-              audioCacheRef.current.delete(firstKey)
-            }
-          }
-          audioBlobUrlRef.current = url
-          audio.src = url
+          audio.src = convertFileSrc(track.audioUrl)
         }
 
         audioPathRef.current = track.audioUrl
@@ -703,10 +672,6 @@ function App() {
           audioContextRef.current.close()
         } catch {}
       }
-      for (const url of audioCacheRef.current.values()) URL.revokeObjectURL(url)
-      audioCacheRef.current.clear()
-      if (audioBlobUrlRef.current) URL.revokeObjectURL(audioBlobUrlRef.current)
-      audioBlobUrlRef.current = null
     }
   }, [])
 

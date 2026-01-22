@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-01-22
+
+### Stability
+- Fixed local playback crashes by streaming from the filesystem instead of reading entire audio files into memory.
+- Hardened library scanning and cover art extraction to avoid crashes from huge/corrupted metadata.
+- Fixed Wayland rendering issues by sandboxing X11 usage inside the Tauri window.
+
+### Platform
+- Improved Windows dev startup reliability by using `127.0.0.1` instead of `localhost`.
+- Added WebKitGTK/Wayland startup fallbacks to reduce blank window / "can't reach the page" failures.
+
 ## 2026-01-21
 
 ### Navidrome (Subsonic)

@@ -286,10 +286,42 @@ fn get_file_stamp(path: &Path) -> Option<(u64, u64)> {
 
 fn parse_track_metadata(entry_path: &Path, folder_id: Option<String>) -> Track {
     let entry_path_str = entry_path.to_string_lossy().to_string();
-    match Probe::open(entry_path)
-        .map_err(|e| e.to_string())
-        .and_then(|p| p.read().map_err(|e| e.to_string()))
-    {
+
+    const MAX_METADATA_PARSE_FILE_SIZE_BYTES: u64 = 2 * 1024 * 1024 * 1024;
+    if let Ok(meta) = std::fs::metadata(entry_path) {
+        if meta.len() > MAX_METADATA_PARSE_FILE_SIZE_BYTES {
+            return Track {
+                id: entry_path_str.clone(),
+                canonical_id: entry_path_str.clone(),
+                title: entry_path
+                    .file_stem()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .to_string(),
+                artist: "Unknown".to_string(),
+                album: "Unknown".to_string(),
+                duration: 0,
+                cover_url: None,
+                audio_url: entry_path_str,
+                folder_id,
+                source: "local".to_string(),
+            };
+        }
+    }
+
+    let parsed = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        Probe::open(entry_path)
+            .map_err(|e| e.to_string())
+            .and_then(|p| p.read().map_err(|e| e.to_string()))
+    }));
+
+    let tagged_file = match parsed {
+        Ok(Ok(f)) => Ok(f),
+        Ok(Err(e)) => Err(e),
+        Err(_) => Err("panic while parsing metadata".to_string()),
+    };
+
+    match tagged_file {
         Ok(tagged_file) => {
             let tag = tagged_file.primary_tag();
             let title = entry_path
@@ -503,13 +535,20 @@ fn scan_music_library_blocking(path: String) -> Result<ScanResult, String> {
 
 #[tauri::command]
 fn get_cover_art(path: String) -> Result<Option<String>, String> {
-    let tagged_file = Probe::open(Path::new(&path))
-        .map_err(|e| e.to_string())?
-        .read()
-        .map_err(|e| e.to_string())?;
+    const MAX_COVER_ART_BYTES: usize = 5 * 1024 * 1024;
+    let tagged_file = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        Probe::open(Path::new(&path))
+            .map_err(|e| e.to_string())?
+            .read()
+            .map_err(|e| e.to_string())
+    }))
+    .map_err(|_| "panic while reading cover art".to_string())??;
     let tag = tagged_file.primary_tag();
     if let Some(tag) = tag {
         if let Some(picture) = tag.pictures().first() {
+            if picture.data().len() > MAX_COVER_ART_BYTES {
+                return Ok(None);
+            }
             let mime = picture.mime_type().to_string();
             let encoded = BASE64_STANDARD.encode(picture.data());
             return Ok(Some(format!("data:{};base64,{}", mime, encoded)));
@@ -577,6 +616,29 @@ async fn navidrome_scan_library(app: tauri::AppHandle, server_id: String) -> Res
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 #[cfg(not(rust_analyzer))]
 pub fn run() {
+    #[cfg(target_os = "linux")]
+    {
+        let is_wayland = std::env::var_os("WAYLAND_DISPLAY").is_some()
+            || std::env::var("XDG_SESSION_TYPE")
+                .ok()
+                .is_some_and(|v| v.eq_ignore_ascii_case("wayland"));
+
+        let is_appimage = std::env::var_os("APPIMAGE").is_some();
+        if is_appimage && std::env::var_os("WEBKIT_DISABLE_SANDBOX").is_none() {
+            std::env::set_var("WEBKIT_DISABLE_SANDBOX", "1");
+        }
+
+        if is_wayland && std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() {
+            std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+        }
+        if is_wayland && std::env::var_os("WEBKIT_DISABLE_COMPOSITING_MODE").is_none() {
+            std::env::set_var("WEBKIT_DISABLE_COMPOSITING_MODE", "1");
+        }
+        if is_wayland && std::env::var_os("GDK_BACKEND").is_none() {
+            std::env::set_var("GDK_BACKEND", "x11");
+        }
+    }
+
     tauri::Builder::default()
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_dialog::init())
