@@ -124,6 +124,63 @@ flowchart LR
 | Windows | Visual Studio C++ Build Tools |
 | Linux | WebKit2 GTK + build tools for Tauri |
 
+Absolutely! I can make a concise Markdown section for your project that lists the dependencies and how to install them on different systems. Here's an example:
+
+## Dependencies
+
+Before running this project, make sure the following dependencies are installed:
+
+### Ubuntu / Debian
+```bash
+sudo apt update
+sudo apt install -y \
+  libglib2.0-dev \
+  pkg-config \
+  libwebkit2gtk-4.1-dev \
+  libayatana-appindicator3-dev \
+  librsvg2-dev \
+  libssl-dev \
+  build-essential
+```
+
+### Fedora
+
+```bash
+sudo dnf install -y \
+  glib2-devel \
+  pkgconfig \
+  webkit2gtk3-devel \
+  libayatana-appindicator3-devel \
+  librsvg2-devel \
+  openssl-devel \
+  @development-tools
+```
+
+### Arch Linux / Manjaro
+
+```bash
+sudo pacman -S --needed \
+  glib2 \
+  pkgconf \
+  webkit2gtk \
+  libayatana-appindicator \
+  librsvg \
+  openssl \
+  base-devel
+```
+
+### macOS (using Homebrew)
+
+```bash
+brew install \
+  glib \
+  pkg-config \
+  webkit2gtk \
+  libayatana-appindicator3 \
+  librsvg \
+  openssl
+```
+
 ## Setup
 
 ```bash
