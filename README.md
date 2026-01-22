@@ -1,8 +1,9 @@
 <br />
 <div align="center">
-  <h1 align="center">Saxon</h1>
   
-  <img src="https://github.com/user-attachments/assets/1a2d0990-651d-47d5-bc11-235767fe0a0e" alt="Saxon Logo" width="1231" />
+  <img src="https://raw.githubusercontent.com/kernelstub/Saxon/refs/heads/main/src-tauri/icons/icon.png" alt="Saxon Logo" width="120" />
+  
+  <h3 align="center">Saxon</h3>
   <p align="center">
     A modern, high-performance, and cross-platform music player
     <br />
