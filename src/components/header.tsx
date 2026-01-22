@@ -1,9 +1,11 @@
 "use client"
 
 import { useState, useEffect, useRef } from "react"
-import { Search, Music, Play } from "lucide-react"
+import { Search, Music, Play, Minus, X } from "lucide-react"
 import { Input } from "@/components/ui/input"
+import { Button } from "@/components/ui/button"
 import type { Track } from "@/lib/types"
+import { getDisplayTitle } from "@/lib/utils"
 import { getCurrentWindow } from "@tauri-apps/api/window"
 
 interface HeaderProps {
@@ -11,9 +13,10 @@ interface HeaderProps {
   onSearch: (query: string) => void
   tracks: Track[]
   onPlayTrack: (track: Track) => void
+  showWindowControls: boolean
 }
 
-export function Header({ onSearch, tracks, onPlayTrack }: HeaderProps) {
+export function Header({ onSearch, tracks, onPlayTrack, showWindowControls }: HeaderProps) {
   const appWindow = getCurrentWindow()
   const [query, setQuery] = useState("")
   const [showDropdown, setShowDropdown] = useState(false)
@@ -102,7 +105,7 @@ export function Header({ onSearch, tracks, onPlayTrack }: HeaderProps) {
                     </div>
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium truncate">{track.title}</p>
+                    <p className="text-sm font-medium truncate">{getDisplayTitle(track.title, track.artist)}</p>
                     <p className="text-xs text-muted-foreground truncate">{track.artist}</p>
                   </div>
                 </button>
@@ -117,6 +120,48 @@ export function Header({ onSearch, tracks, onPlayTrack }: HeaderProps) {
         className="flex items-center gap-3"
         style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
       >
+        {showWindowControls && (
+          <div className="flex items-center gap-1">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-9 w-9 rounded-lg"
+              onClick={async () => {
+                try {
+                  await appWindow.minimize()
+                  return
+                } catch {}
+                try {
+                  const { invoke } = await import("@tauri-apps/api/core")
+                  await invoke("minimize_window")
+                  return
+                } catch {}
+                try {
+                  await appWindow.hide()
+                } catch {}
+              }}
+            >
+              <Minus className="w-4 h-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-9 w-9 rounded-lg hover:bg-destructive/10 hover:text-destructive"
+              onClick={async () => {
+                try {
+                  const { invoke } = await import("@tauri-apps/api/core")
+                  await invoke("exit_app")
+                  return
+                } catch {}
+                try {
+                  await appWindow.close()
+                } catch {}
+              }}
+            >
+              <X className="w-4 h-4" />
+            </Button>
+          </div>
+        )}
       </div>
     </header>
   )

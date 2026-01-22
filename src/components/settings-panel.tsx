@@ -1,4 +1,4 @@
-import { X, Volume2, Music, Info, FolderPlus, Server, RefreshCcw } from "lucide-react"
+import { X, Volume2, Music, Info, FolderPlus, Server, RefreshCcw, ChevronDown } from "lucide-react"
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { Separator } from "@/components/ui/separator"
 import { Input } from "@/components/ui/input"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import type { NavidromeServerConfig } from "@/lib/types"
 
 interface SettingsPanelProps {
@@ -22,6 +23,16 @@ interface SettingsPanelProps {
   setCrossfade: (value: number) => void
   normalize: boolean
   setNormalize: (enabled: boolean) => void
+  showWindowControls: boolean
+  setShowWindowControls: (enabled: boolean) => void
+  themeOptions: string[]
+  selectedTheme: string
+  setSelectedTheme: (theme: string) => void
+  discordRichPresence: boolean
+  setDiscordRichPresence: (enabled: boolean) => void
+  testDiscordRichPresence: () => void
+  discordRpcError: string | null
+  discordRpcTestSuccessAt: number | null
 }
 
 const eqBands = [
@@ -58,7 +69,17 @@ export function SettingsPanel({
   crossfade,
   setCrossfade,
   normalize,
-  setNormalize
+  setNormalize,
+  showWindowControls,
+  setShowWindowControls,
+  themeOptions,
+  selectedTheme,
+  setSelectedTheme,
+  discordRichPresence,
+  setDiscordRichPresence,
+  testDiscordRichPresence,
+  discordRpcError,
+  discordRpcTestSuccessAt
 }: SettingsPanelProps) {
   const [loadedFolders, setLoadedFolders] = useState<string[]>([])
   const [navidromeServers, setNavidromeServers] = useState<NavidromeServerConfig[]>([])
@@ -66,6 +87,7 @@ export function SettingsPanel({
   const [navidromeBaseUrl, setNavidromeBaseUrl] = useState("")
   const [navidromeUsername, setNavidromeUsername] = useState("")
   const [navidromePassword, setNavidromePassword] = useState("")
+  const [navidromeApiKey, setNavidromeApiKey] = useState("")
   const [navidromeBusy, setNavidromeBusy] = useState(false)
 
   useEffect(() => {
@@ -125,7 +147,9 @@ export function SettingsPanel({
   }
 
   const handleAddNavidromeServer = async () => {
-    if (!navidromeBaseUrl || !navidromeUsername || !navidromePassword) return
+    const hasPassword = !!navidromePassword.trim()
+    const hasApiKey = !!navidromeApiKey.trim()
+    if (!navidromeBaseUrl || !navidromeUsername || (!hasPassword && !hasApiKey)) return
     setNavidromeBusy(true)
     try {
       const { invoke } = await import("@tauri-apps/api/core")
@@ -133,12 +157,14 @@ export function SettingsPanel({
         name: navidromeName || "Navidrome",
         baseUrl: navidromeBaseUrl,
         username: navidromeUsername,
-        password: navidromePassword,
+        password: hasApiKey ? null : navidromePassword,
+        apiKey: hasApiKey ? navidromeApiKey : null,
       })
       const next = [...navidromeServers, created]
       setNavidromeServers(next)
       await persistNavidromeServers(next)
       setNavidromePassword("")
+      setNavidromeApiKey("")
     } catch (e) {
       alert("Failed to add Navidrome server: " + e)
     } finally {
@@ -243,6 +269,75 @@ export function SettingsPanel({
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <Label className="text-sm font-medium flex items-center gap-2">
+                  <Info className="w-4 h-4" />
+                  Window
+                </Label>
+                <Switch checked={showWindowControls} onCheckedChange={setShowWindowControls} />
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Show minimize and close buttons in the top bar
+              </p>
+            </div>
+
+            <div className="space-y-4">
+              <div className="flex items-center justify-between gap-4">
+                <Label className="text-sm font-medium flex items-center gap-2">
+                  <Info className="w-4 h-4" />
+                  Theme
+                </Label>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="secondary" size="sm" className="rounded-lg">
+                      <span className="max-w-40 truncate">{selectedTheme || "default"}</span>
+                      <ChevronDown className="w-4 h-4 ml-2 opacity-70" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    {themeOptions.length > 0 ? (
+                      themeOptions.map((name) => (
+                        <DropdownMenuItem key={name} onClick={() => setSelectedTheme(name)}>
+                          {name}
+                        </DropdownMenuItem>
+                      ))
+                    ) : (
+                      <DropdownMenuItem disabled>No themes found</DropdownMenuItem>
+                    )}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Themes come from sections in color.ini (for example [default], [purple], [oled])
+              </p>
+            </div>
+
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <Label className="text-sm font-medium flex items-center gap-2">
+                  <Info className="w-4 h-4" />
+                  Discord Rich Presence
+                </Label>
+                <Switch checked={discordRichPresence} onCheckedChange={setDiscordRichPresence} />
+              </div>
+              {discordRichPresence && !discordRpcError && discordRpcTestSuccessAt && (
+                <div className="text-xs text-emerald-500">
+                  Test sent.
+                </div>
+              )}
+              {discordRichPresence && discordRpcError && (
+                <div className="text-xs text-destructive">
+                  {discordRpcError}
+                </div>
+              )}
+              <p className="text-xs text-muted-foreground">
+                Discord must be running. Shows current track in your profile.
+              </p>
+            </div>
+
+            <Separator />
+
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <Label className="text-sm font-medium flex items-center gap-2">
                   <Music className="w-4 h-4" />
                   Equalizer
                 </Label>
@@ -340,15 +435,26 @@ export function SettingsPanel({
                       />
                     </div>
                   </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <Label className="text-xs text-muted-foreground">OpenSubsonic API Key (optional)</Label>
+                      <Input
+                        value={navidromeApiKey}
+                        onChange={(e) => setNavidromeApiKey(e.target.value)}
+                        placeholder="apiKey"
+                      />
+                    </div>
+                    <div />
+                  </div>
                   <div className="flex items-center justify-between gap-3">
                     <p className="text-xs text-muted-foreground">
-                      Saxon stores a Subsonic token + salt (not your password).
+                      Saxon uses OpenSubsonic-compatible endpoints and can authenticate via token+salt or an API key.
                     </p>
                     <Button
                       onClick={handleAddNavidromeServer}
                       size="sm"
                       className="rounded-lg"
-                      disabled={navidromeBusy || !navidromeBaseUrl || !navidromeUsername || !navidromePassword}
+                      disabled={navidromeBusy || !navidromeBaseUrl || !navidromeUsername || (!navidromePassword.trim() && !navidromeApiKey.trim())}
                     >
                       Add Server
                     </Button>
@@ -439,12 +545,12 @@ export function SettingsPanel({
               </Label>
               <div className="bg-secondary/50 rounded-xl p-4 border border-border space-y-2">
                 <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Version</span>
-                  <span>0.1.3</span>
+                  <span className="text-muted-foreground">Repo</span>
+                  <span>github.com/kernelstub/Saxon</span>
                 </div>
                 <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Built for</span>
-                  <span>Tauri v2</span>
+                  <span className="text-muted-foreground">Built with</span>
+                  <span>Tauri v2, React, TypeScript</span>
                 </div>
               </div>
             </div>

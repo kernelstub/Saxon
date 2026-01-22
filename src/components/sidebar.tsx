@@ -11,6 +11,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import {
   Library,
   Disc3,
+  ListMusic,
   Heart,
   Clock,
   Settings,
@@ -22,8 +23,8 @@ import {
 import type { MusicFolder } from "@/lib/types"
 
 interface SidebarProps {
-  view: "library" | "nowplaying" | "favorites" | "recent"
-  setView: (view: "library" | "nowplaying" | "favorites" | "recent") => void
+  view: "library" | "nowplaying" | "queue" | "artist" | "favorites" | "recent"
+  setView: (view: "library" | "nowplaying" | "queue" | "artist" | "favorites" | "recent") => void
   onOpenSettings: () => void
   onAddFolder: () => void
   collapsed: boolean
@@ -99,6 +100,12 @@ export const Sidebar = memo(function Sidebar({
               label="Now Playing"
               isActive={view === "nowplaying"}
               onClick={() => setView("nowplaying")}
+            />
+            <NavButton
+              icon={ListMusic}
+              label="Queue"
+              isActive={view === "queue"}
+              onClick={() => setView("queue")}
             />
             <NavButton
               icon={Library}

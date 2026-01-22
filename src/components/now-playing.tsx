@@ -1,7 +1,8 @@
 import type { Track, PlayerState } from "@/lib/types"
-import { formatTime, cn } from "@/lib/utils"
+import { formatTime, cn, getDisplayTitle } from "@/lib/utils"
 import { Slider } from "@/components/ui/slider"
 import { Button } from "@/components/ui/button"
+import { ArtistLinks } from "@/components/artist-links"
 import {
   Music2,
   Play,
@@ -27,6 +28,7 @@ interface NowPlayingProps {
   onToggleMute: () => void
   onToggleShuffle: () => void
   onToggleRepeat: () => void
+  onSelectArtist: (artist: string) => void
 }
 
 export function NowPlaying({
@@ -40,10 +42,12 @@ export function NowPlaying({
   onToggleMute,
   onToggleShuffle,
   onToggleRepeat,
+  onSelectArtist,
 }: NowPlayingProps) {
   const VolumeIcon =
     playerState.isMuted || playerState.volume === 0 ? VolumeX : playerState.volume < 0.5 ? Volume1 : Volume2
   const RepeatIcon = playerState.repeatMode === "one" ? Repeat1 : Repeat
+  const displayTitle = track ? getDisplayTitle(track.title, track.artist) : ""
 
   if (!track) {
     return (
@@ -72,7 +76,7 @@ export function NowPlaying({
           <div className="relative w-full h-full rounded-3xl overflow-hidden shadow-2xl bg-secondary">
             <img
               src={track.coverUrl || "/placeholder.svg"}
-              alt={track.title || "Unknown Track"}
+              alt={displayTitle || "Unknown Track"}
               className={cn(
                 "absolute inset-0 w-full h-full object-cover transition-transform duration-700",
                 playerState.isPlaying ? "scale-105" : "scale-100",
@@ -81,8 +85,8 @@ export function NowPlaying({
           </div>
         </div>
 
-        <h1 className="text-2xl font-semibold tracking-tight mb-1">{track.title}</h1>
-        <p className="text-muted-foreground mb-1">{track.artist}</p>
+        <h1 className="text-2xl font-semibold tracking-tight mb-1">{displayTitle}</h1>
+        <ArtistLinks artist={track.artist} onSelectArtist={onSelectArtist} className="text-muted-foreground mb-1 text-sm" />
         <p className="text-sm text-muted-foreground/70 mb-8">{track.album}</p>
 
         <div className="space-y-2 mb-6">

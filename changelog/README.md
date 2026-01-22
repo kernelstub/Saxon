@@ -11,6 +11,21 @@
 - Improved Windows dev startup reliability by using `127.0.0.1` instead of `localhost`.
 - Added WebKitGTK/Wayland startup fallbacks to reduce blank window / "can't reach the page" failures.
 
+### Discord Rich Presence
+- Improved presence formatting: multiple artists are now displayed as `Artist1, Artist2` instead of `Artist1/Artist2`.
+- Removed album display from the presence.
+- Removed extra hover text that caused duplicated lines in the presence.
+- Switched Rich Presence image handling to a static app asset key (`saxon`) instead of per-track external images.
+
+### Covers & Queue
+- Added a local cover art HTTP server so embedded covers can be served as `http://127.0.0.1:<port>/cover/<id>` URLs.
+- Added a new backend command `cover_server_register(path)` to register a track’s embedded cover for HTTP serving.
+- Updated queue screen to proactively request missing covers so images continue loading further down the queue.
+
+### Documentation
+- Added usage guide: `documentation/app/README.md`.
+- Added theming guide: `documentation/theming/README.md`.
+
 ## 2026-01-21
 
 ### Navidrome (Subsonic)

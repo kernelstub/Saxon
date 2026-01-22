@@ -37,6 +37,7 @@ export interface NavidromeServerConfig {
   username: string
   token: string
   salt: string
+  apiKey?: string | null
   enabled: boolean
 }
 
@@ -49,5 +50,8 @@ export interface AppConfig {
   eqValues?: number[]
   crossfade?: number
   normalize?: boolean
+  showWindowControls?: boolean
+  selectedTheme?: string
+  discordRichPresence?: boolean
   navidromeServers?: NavidromeServerConfig[]
 }

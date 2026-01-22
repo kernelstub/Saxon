@@ -1,5 +1,6 @@
 import type { Track, PlayerState } from "@/lib/types"
-import { formatTime, cn } from "@/lib/utils"
+import { formatTime, cn, getDisplayTitle } from "@/lib/utils"
+import { ArtistLinks } from "@/components/artist-links"
 import {
   Play,
   Pause,
@@ -27,6 +28,7 @@ interface PlayerControlsProps {
   onToggleMute: () => void
   onToggleShuffle: () => void
   onToggleRepeat: () => void
+  onSelectArtist: (artist: string) => void
 }
 
 export function PlayerControls({
@@ -40,6 +42,7 @@ export function PlayerControls({
   onToggleMute,
   onToggleShuffle,
   onToggleRepeat,
+  onSelectArtist,
 }: PlayerControlsProps) {
   const VolumeIcon =
     playerState.isMuted || playerState.volume === 0 ? VolumeX : playerState.volume < 0.5 ? Volume1 : Volume2
@@ -55,13 +58,13 @@ export function PlayerControls({
               <div className="relative w-14 h-14 rounded-xl overflow-hidden flex-shrink-0 bg-secondary">
                 <img
                   src={currentTrack.coverUrl || "/placeholder.svg"}
-                  alt={currentTrack.title || "Unknown Track"}
+                  alt={getDisplayTitle(currentTrack.title, currentTrack.artist) || "Unknown Track"}
                   className="absolute inset-0 w-full h-full object-cover"
                 />
               </div>
               <div className="min-w-0">
-                <p className="text-sm font-medium truncate">{currentTrack.title}</p>
-                <p className="text-xs text-muted-foreground truncate">{currentTrack.artist}</p>
+                <p className="text-sm font-medium truncate">{getDisplayTitle(currentTrack.title, currentTrack.artist)}</p>
+                <ArtistLinks artist={currentTrack.artist} onSelectArtist={onSelectArtist} className="truncate" />
               </div>
             </>
           ) : (

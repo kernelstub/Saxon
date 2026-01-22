@@ -1,9 +1,10 @@
 import { memo, useEffect, useMemo, useRef, useState } from "react"
 import type { Track, MusicFolder } from "@/lib/types"
-import { formatTime, cn } from "@/lib/utils"
-import { Play, MoreHorizontal, Heart, Folder, ChevronLeft, Trash2, ExternalLink } from "lucide-react"
+import { formatTime, cn, getDisplayTitle } from "@/lib/utils"
+import { Play, MoreHorizontal, Heart, Folder, ChevronLeft, Trash2, ExternalLink, ListPlus } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { ArtistLinks } from "@/components/artist-links"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -16,7 +17,10 @@ interface TrackListProps {
   tracks: Track[]
   folders: MusicFolder[]
   currentTrack: Track | null
-  onTrackSelect: (track: Track) => void
+  onTrackSelect: (track: Track, contextTracks: Track[], contextLabel: string) => void
+  onAddToQueue: (track: Track) => void
+  contextLabel: string
+  onSelectArtist: (artist: string) => void
   isPlaying: boolean
   selectedFolder: MusicFolder | null
   onFolderSelect: (folder: MusicFolder | null) => void
@@ -31,6 +35,9 @@ export const TrackList = memo(function TrackList({
   folders,
   currentTrack,
   onTrackSelect,
+  onAddToQueue,
+  contextLabel,
+  onSelectArtist,
   isPlaying,
   selectedFolder,
   onFolderSelect,
@@ -131,9 +138,10 @@ export const TrackList = memo(function TrackList({
 
   const TrackRow = ({ track, index }: { track: Track; index: number }) => {
     const isCurrentTrack = currentTrack?.id === track.id
+    const displayTitle = getDisplayTitle(track.title, track.artist)
     return (
       <div
-        onClick={() => onTrackSelect(track)}
+        onClick={() => onTrackSelect(track, displayedTracks, contextLabel)}
         className={cn(
           "flex items-center gap-4 p-3 rounded-xl cursor-pointer transition-colors group",
           isCurrentTrack ? "bg-secondary" : "hover:bg-secondary/50",
@@ -165,18 +173,24 @@ export const TrackList = memo(function TrackList({
           <div className="relative w-10 h-10 rounded-lg overflow-hidden flex-shrink-0 bg-secondary">
             <img
               src={track.coverUrl || "/placeholder.svg"}
-              alt={track.title || "Unknown Track"}
+              alt={displayTitle || "Unknown Track"}
               className="absolute inset-0 w-full h-full object-cover"
             />
           </div>
           <div className="min-w-0">
-            <p className="text-sm font-medium truncate">{track.title}</p>
-            <p className="text-xs text-muted-foreground truncate">{track.artist}</p>
+            <p className="text-sm font-medium truncate" title={displayTitle}>
+              {displayTitle}
+            </p>
+            <span title={track.artist} className="block truncate">
+              <ArtistLinks artist={track.artist} onSelectArtist={onSelectArtist} className="truncate" />
+            </span>
           </div>
         </div>
 
         <div className="hidden md:block w-48">
-          <p className="text-sm text-muted-foreground truncate">{track.album}</p>
+          <p className="text-sm text-muted-foreground truncate" title={track.album}>
+            {track.album}
+          </p>
         </div>
 
         <div className="w-12 text-right">
@@ -203,6 +217,15 @@ export const TrackList = memo(function TrackList({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+              <DropdownMenuItem
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onAddToQueue(track)
+                }}
+              >
+                <ListPlus className="w-4 h-4 mr-2" />
+                Add to Queue
+              </DropdownMenuItem>
               {track.source === "local" && (
                 <>
                   <DropdownMenuItem

@@ -38,6 +38,10 @@
   --sidebar-accent-foreground: oklch(0.95 0 0);
   --sidebar-border: oklch(0.18 0 0);
   --sidebar-ring: oklch(0.5 0 0);
+  --scrollbar-thumb: oklch(0.4 0 0 / 0.3);
+  --scrollbar-thumb-hover: oklch(0.5 0 0 / 0.5);
+  --range-track: oklch(0.25 0 0);
+  --range-thumb: oklch(0.8 0 0);
 }
 
 @theme inline {
@@ -98,12 +102,12 @@
 }
 
 ::-webkit-scrollbar-thumb {
-  background: oklch(0.4 0 0 / 0.3);
+  background: var(--scrollbar-thumb);
   border-radius: 9999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: oklch(0.5 0 0 / 0.5);
+  background: var(--scrollbar-thumb-hover);
 }
 
 input[type="range"] {
@@ -115,7 +119,7 @@ input[type="range"] {
 input[type="range"]::-webkit-slider-runnable-track {
   height: 6px;
   border-radius: 9999px;
-  background: oklch(0.25 0 0);
+  background: var(--range-track);
 }
 
 input[type="range"]::-webkit-slider-thumb {
@@ -123,7 +127,7 @@ input[type="range"]::-webkit-slider-thumb {
   width: 12px;
   height: 12px;
   border-radius: 9999px;
-  background: oklch(0.8 0 0);
+  background: var(--range-thumb);
   margin-top: -3px;
   box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
   transition: transform 150ms ease;
@@ -136,14 +140,14 @@ input[type="range"]:hover::-webkit-slider-thumb {
 input[type="range"]::-moz-range-track {
   height: 6px;
   border-radius: 9999px;
-  background: oklch(0.25 0 0);
+  background: var(--range-track);
 }
 
 input[type="range"]::-moz-range-thumb {
   width: 12px;
   height: 12px;
   border-radius: 9999px;
-  background: oklch(0.8 0 0);
+  background: var(--range-thumb);
   border: 0;
   box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
 }

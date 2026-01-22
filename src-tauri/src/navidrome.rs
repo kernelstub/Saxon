@@ -6,22 +6,51 @@ use std::hash::{Hash, Hasher};
 use super::{MusicFolder, NavidromeServerConfig, ScanResult, Track};
 
 fn rest_base(base_url: &str) -> String {
-    format!("{}/rest", base_url.trim_end_matches('/'))
+    let trimmed = base_url.trim_end_matches('/');
+    if trimmed.ends_with("/rest") {
+        trimmed.to_string()
+    } else {
+        format!("{}/rest", trimmed)
+    }
+}
+
+fn normalize_endpoint(endpoint: &str) -> String {
+    let endpoint = endpoint.trim_start_matches('/');
+    if endpoint.ends_with(".view") {
+        endpoint.to_string()
+    } else {
+        format!("{endpoint}.view")
+    }
 }
 
 fn endpoint_url(base_url: &str, endpoint: &str) -> String {
-    format!("{}/{}", rest_base(base_url), endpoint.trim_start_matches('/'))
+    format!("{}/{}", rest_base(base_url), normalize_endpoint(endpoint))
 }
 
-fn auth_query(server: &NavidromeServerConfig) -> Vec<(String, String)> {
+fn client_query() -> Vec<(String, String)> {
     vec![
-        ("u".to_string(), server.username.clone()),
-        ("t".to_string(), server.token.clone()),
-        ("s".to_string(), server.salt.clone()),
         ("v".to_string(), "1.16.1".to_string()),
         ("c".to_string(), "Saxon".to_string()),
         ("f".to_string(), "json".to_string()),
     ]
+}
+
+fn auth_query(server: &NavidromeServerConfig) -> Vec<(String, String)> {
+    if let Some(api_key) = server.api_key.as_ref().filter(|k| !k.trim().is_empty()) {
+        vec![("apiKey".to_string(), api_key.clone())]
+    } else {
+        vec![
+            ("u".to_string(), server.username.clone()),
+            ("t".to_string(), server.token.clone()),
+            ("s".to_string(), server.salt.clone()),
+        ]
+    }
+}
+
+fn request_query(server: &NavidromeServerConfig) -> Vec<(String, String)> {
+    let mut query = client_query();
+    query.extend(auth_query(server));
+    query
 }
 
 async fn subsonic_get(
@@ -30,7 +59,7 @@ async fn subsonic_get(
     endpoint: &str,
     params: Vec<(String, String)>,
 ) -> Result<Value, String> {
-    let mut query = auth_query(server);
+    let mut query = request_query(server);
     query.extend(params);
 
     let url = endpoint_url(&server.base_url, endpoint);
@@ -91,14 +120,17 @@ fn value_to_u64(value: Option<&Value>) -> Option<u64> {
     }
 }
 
-pub async fn ping(server: &NavidromeServerConfig) -> Result<(), String> {
+pub async fn ping(server: &NavidromeServerConfig) -> Result<bool, String> {
     let client = Client::new();
-    let _ = subsonic_get(&client, server, "ping", Vec::new()).await?;
-    Ok(())
+    let sr = subsonic_get(&client, server, "ping", Vec::new()).await?;
+    Ok(sr
+        .get("openSubsonic")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false))
 }
 
 fn cover_art_url(server: &NavidromeServerConfig, cover_id: &str) -> String {
-    let mut query = auth_query(server);
+    let mut query = request_query(server);
     query.push(("id".to_string(), cover_id.to_string()));
     query.push(("size".to_string(), "300".to_string()));
     let url = endpoint_url(&server.base_url, "getCoverArt");
@@ -107,7 +139,7 @@ fn cover_art_url(server: &NavidromeServerConfig, cover_id: &str) -> String {
 }
 
 fn stream_url(server: &NavidromeServerConfig, track_id: &str) -> String {
-    let mut query = auth_query(server);
+    let mut query = request_query(server);
     query.push(("id".to_string(), track_id.to_string()));
     let url = endpoint_url(&server.base_url, "stream");
     let query_string = serde_urlencoded::to_string(query).unwrap_or_default();

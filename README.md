@@ -166,6 +166,9 @@ Saxon stores configuration in `config.json` inside the app config directory.
 | `crossfade` | number | Crossfade seconds |
 | `normalize` | boolean | Enable normalization compressor |
 | `navidromeServers` | object[] | Saved Navidrome servers (token+salt auth) |
+| `showWindowControls` | boolean | Show minimize/close buttons in header |
+| `selectedTheme` | string | Selected theme name from color.ini |
+| `discordRichPresence` | boolean | Enable Discord Rich Presence |
 
 Navidrome server object:
 
@@ -176,6 +179,68 @@ Navidrome server object:
 | `username` | Subsonic username |
 | `token` / `salt` | Subsonic token auth (derived; password not stored) |
 | `enabled` | Toggle server on/off |
+
+## Theme (color.ini)
+
+Saxon can be themed by editing `color.ini` in the same app config directory as `config.json`. The file is auto-created with defaults on first run.
+
+Themes are INI sections:
+
+```ini
+[default]
+background=#0f0f0f
+foreground=#f2f2f2
+
+[oled]
+background=#000000
+card=#000000
+border=#111111
+```
+
+Each entry is `key=value`. Values are written directly into CSS variables, so they can be any valid CSS value (for example `#RRGGBB`, `#RRGGBBAA`, `rgb(...)`, `oklch(...)`, or `0.625rem` for radius).
+
+Supported keys:
+
+| Key | What it controls |
+|-----|------------------|
+| `background` | App background |
+| `foreground` | App text |
+| `card` | Card surfaces |
+| `card-foreground` | Card text |
+| `popover` | Popover surfaces |
+| `popover-foreground` | Popover text |
+| `primary` | Primary accent |
+| `primary-foreground` | Text on primary |
+| `secondary` | Secondary surfaces |
+| `secondary-foreground` | Text on secondary |
+| `muted` | Muted surfaces |
+| `muted-foreground` | Muted text |
+| `accent` | Accent surfaces |
+| `accent-foreground` | Text on accent |
+| `destructive` | Destructive (danger) |
+| `destructive-foreground` | Text on destructive |
+| `border` | Borders |
+| `input` | Inputs |
+| `ring` | Focus rings |
+| `chart-1` | Chart color 1 |
+| `chart-2` | Chart color 2 |
+| `chart-3` | Chart color 3 |
+| `chart-4` | Chart color 4 |
+| `chart-5` | Chart color 5 |
+| `radius` | Border radius |
+| `sidebar` | Sidebar background |
+| `sidebar-foreground` | Sidebar text |
+| `sidebar-primary` | Sidebar primary accent |
+| `sidebar-primary-foreground` | Text on sidebar primary |
+| `sidebar-accent` | Sidebar accent |
+| `sidebar-accent-foreground` | Text on sidebar accent |
+| `sidebar-border` | Sidebar border |
+| `sidebar-ring` | Sidebar focus ring |
+| `scrollbar-thumb` | Scrollbar thumb |
+| `scrollbar-thumb-hover` | Scrollbar thumb hover |
+| `range-track` | Range/slider track |
+| `range-thumb` | Range/slider thumb |
+
 
 <h1 id="development">Development</h1>
 
