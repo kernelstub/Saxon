@@ -88,6 +88,8 @@ struct AppConfig {
     #[serde(default)]
     show_window_controls: bool,
     #[serde(default)]
+    use_native_titlebar: bool,
+    #[serde(default)]
     selected_theme: Option<String>,
     #[serde(default)]
     discord_rich_presence: bool,
@@ -543,6 +545,11 @@ fn minimize_window(window: tauri::Window) -> Result<(), String> {
 #[tauri::command]
 fn close_window(window: tauri::Window) -> Result<(), String> {
     window.close().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn set_window_decorations(window: tauri::Window, enabled: bool) -> Result<(), String> {
+    window.set_decorations(enabled).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -1055,6 +1062,7 @@ pub fn run() {
             discord_rpc_clear,
             minimize_window,
             close_window,
+            set_window_decorations,
             exit_app,
             add_music_folder,
             prune_music_folders,

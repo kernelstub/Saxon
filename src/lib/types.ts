@@ -51,6 +51,7 @@ export interface AppConfig {
   crossfade?: number
   normalize?: boolean
   showWindowControls?: boolean
+  useNativeTitlebar?: boolean
   selectedTheme?: string
   discordRichPresence?: boolean
   navidromeServers?: NavidromeServerConfig[]

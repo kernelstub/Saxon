@@ -28,6 +28,7 @@ function App() {
   const [selectedArtist, setSelectedArtist] = useState<string | null>(null)
   const lastNonArtistViewRef = useRef<"library" | "nowplaying" | "queue" | "favorites" | "recent">("library")
   const [showWindowControls, setShowWindowControls] = useState(false)
+  const [useNativeTitlebar, setUseNativeTitlebar] = useState(false)
   const appliedThemeVarsRef = useRef<Set<string>>(new Set())
   const [selectedTheme, setSelectedTheme] = useState("default")
   const selectedThemeRef = useRef("default")
@@ -303,6 +304,12 @@ function App() {
         if (config.crossfade !== undefined) setCrossfade(config.crossfade);
         if (config.normalize !== undefined) setNormalize(config.normalize);
         if (config.showWindowControls !== undefined) setShowWindowControls(config.showWindowControls)
+        if (config.useNativeTitlebar !== undefined) {
+          setUseNativeTitlebar(config.useNativeTitlebar)
+          if (config.useNativeTitlebar) {
+            invoke("set_window_decorations", { enabled: true }).catch(() => {})
+          }
+        }
         if (config.selectedTheme) setSelectedTheme(config.selectedTheme)
         if (config.discordRichPresence !== undefined) setDiscordRichPresence(config.discordRichPresence)
 
@@ -478,6 +485,14 @@ function App() {
     setShowWindowControls(enabled)
     invoke("load_config").then((c: any) => {
       invoke("save_config", { config: { ...c, showWindowControls: enabled } })
+    })
+  }, [])
+
+  const handleSaveUseNativeTitlebar = useCallback((enabled: boolean) => {
+    setUseNativeTitlebar(enabled)
+    invoke("set_window_decorations", { enabled }).catch(() => {})
+    invoke("load_config").then((c: any) => {
+      invoke("save_config", { config: { ...c, useNativeTitlebar: enabled } })
     })
   }, [])
 
@@ -1199,6 +1214,7 @@ function App() {
             tracks={tracks} 
             onPlayTrack={handlePlayFromSearch}
             showWindowControls={showWindowControls}
+            useNativeTitlebar={useNativeTitlebar}
         />
 
         <main className="flex-1 overflow-hidden relative">
@@ -1306,6 +1322,8 @@ function App() {
           setCrossfade={(val) => handleSaveEqSettings(eqEnabled, eqPreset, eqValues, val, normalize)}
           normalize={normalize}
           setNormalize={(val) => handleSaveEqSettings(eqEnabled, eqPreset, eqValues, crossfade, val)}
+          useNativeTitlebar={useNativeTitlebar}
+          setUseNativeTitlebar={handleSaveUseNativeTitlebar}
           showWindowControls={showWindowControls}
           setShowWindowControls={handleSaveWindowControls}
           themeOptions={themeOptions}

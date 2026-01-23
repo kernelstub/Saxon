@@ -23,6 +23,8 @@ interface SettingsPanelProps {
   setCrossfade: (value: number) => void
   normalize: boolean
   setNormalize: (enabled: boolean) => void
+  useNativeTitlebar: boolean
+  setUseNativeTitlebar: (enabled: boolean) => void
   showWindowControls: boolean
   setShowWindowControls: (enabled: boolean) => void
   themeOptions: string[]
@@ -70,6 +72,8 @@ export function SettingsPanel({
   setCrossfade,
   normalize,
   setNormalize,
+  useNativeTitlebar,
+  setUseNativeTitlebar,
   showWindowControls,
   setShowWindowControls,
   themeOptions,
@@ -269,9 +273,22 @@ export function SettingsPanel({
               <div className="flex items-center justify-between">
                 <Label className="text-sm font-medium flex items-center gap-2">
                   <Info className="w-4 h-4" />
-                  Window
+                  System Title Bar
                 </Label>
-                <Switch checked={showWindowControls} onCheckedChange={setShowWindowControls} />
+                <Switch checked={useNativeTitlebar} onCheckedChange={setUseNativeTitlebar} />
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Use the system title bar (recommended on some Linux desktops)
+              </p>
+            </div>
+
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <Label className="text-sm font-medium flex items-center gap-2">
+                  <Info className="w-4 h-4" />
+                  Window Buttons
+                </Label>
+                <Switch checked={showWindowControls} onCheckedChange={setShowWindowControls} disabled={useNativeTitlebar} />
               </div>
               <p className="text-xs text-muted-foreground">
                 Show minimize and close buttons in the top bar

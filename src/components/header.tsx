@@ -14,13 +14,16 @@ interface HeaderProps {
   tracks: Track[]
   onPlayTrack: (track: Track) => void
   showWindowControls: boolean
+  useNativeTitlebar: boolean
 }
 
-export function Header({ onSearch, tracks, onPlayTrack, showWindowControls }: HeaderProps) {
+export function Header({ onSearch, tracks, onPlayTrack, showWindowControls, useNativeTitlebar }: HeaderProps) {
   const appWindow = getCurrentWindow()
   const [query, setQuery] = useState("")
   const [showDropdown, setShowDropdown] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
+  const dragStyle = { WebkitAppRegion: "drag" } as any
+  const noDragStyle = { WebkitAppRegion: "no-drag" } as any
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -55,21 +58,22 @@ export function Header({ onSearch, tracks, onPlayTrack, showWindowControls }: He
 
   return (
     <header
-      data-tauri-drag-region
+      {...(!useNativeTitlebar ? { "data-tauri-drag-region": true } : {})}
       className="h-16 border-b border-border px-6 flex items-center justify-between select-none"
       onDoubleClick={toggleMaximize}
       onMouseDown={(e) => {
+        if (useNativeTitlebar) return
         if (e.button !== 0) return
         const target = e.target as HTMLElement
         if (target.closest("[data-no-drag]")) return
         appWindow.startDragging().catch(() => {})
       }}
-      style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
+      style={!useNativeTitlebar ? dragStyle : undefined}
     >
       <div
         data-no-drag
         className="relative w-80"
-        style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+        style={noDragStyle}
         ref={dropdownRef}
       >
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -118,9 +122,9 @@ export function Header({ onSearch, tracks, onPlayTrack, showWindowControls }: He
       <div
         data-no-drag
         className="flex items-center gap-3"
-        style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+        style={noDragStyle}
       >
-        {showWindowControls && (
+        {showWindowControls && !useNativeTitlebar && (
           <div className="flex items-center gap-1">
             <Button
               variant="ghost"

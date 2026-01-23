@@ -11,6 +11,12 @@ Themes are stored in the app config directory as:
 
 `color.ini` is auto-created on first run with a `[default]` theme.
 
+Typical locations (Saxon identifier: `com.xor.saxon`):
+
+- Windows: `%APPDATA%\\com.xor.saxon\\config.json` and `%APPDATA%\\com.xor.saxon\\color.ini`
+- macOS: `~/Library/Application Support/com.xor.saxon/config.json` and `~/Library/Application Support/com.xor.saxon/color.ini`
+- Linux: `$XDG_CONFIG_HOME/com.xor.saxon/config.json` and `$XDG_CONFIG_HOME/com.xor.saxon/color.ini` (usually `~/.config/com.xor.saxon/...`)
+
 ## Theme File Format (color.ini)
 
 `color.ini` uses INI sections. Each section is a theme name, and each entry is `key=value`.
