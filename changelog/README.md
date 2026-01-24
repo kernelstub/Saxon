@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-01-24
+
+### Playlists & Library Covers
+- Added a setting to toggle Spotify-style playlist/folder cover collages (4-up from the first tracks).
+- When enabled, folder cards show 4-up collages instead of the folder icon.
+- Empty playlists fall back to a Library icon instead of a collage.
+
+### Placeholders
+- Switched missing cover art fallback to the Saxon app icon.
+
 ## 2026-01-22
 
 ### Stability

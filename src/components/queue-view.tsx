@@ -78,7 +78,7 @@ export const QueueView = memo(function QueueView({
               <div className="flex items-center gap-3 min-w-0 overflow-hidden">
                 <div className="relative w-10 h-10 rounded-lg overflow-hidden flex-shrink-0 bg-secondary">
                   <img
-                    src={currentTrack.coverUrl || "/placeholder.svg"}
+                    src={currentTrack.coverUrl || "/icon.png"}
                     alt={getDisplayTitle(currentTrack.title, currentTrack.artist) || "Unknown Track"}
                     className="absolute inset-0 w-full h-full object-cover"
                   />
@@ -127,7 +127,7 @@ export const QueueView = memo(function QueueView({
                 <div className="flex items-center gap-3 min-w-0 overflow-hidden">
                   <div className="relative w-10 h-10 rounded-lg overflow-hidden flex-shrink-0 bg-secondary">
                     <img
-                      src={track.coverUrl || "/placeholder.svg"}
+                      src={track.coverUrl || "/icon.png"}
                       alt={getDisplayTitle(track.title, track.artist) || "Unknown Track"}
                       className="absolute inset-0 w-full h-full object-cover"
                     />
@@ -193,7 +193,7 @@ export const QueueView = memo(function QueueView({
                 <div className="flex items-center gap-3 min-w-0 overflow-hidden">
                   <div className="relative w-10 h-10 rounded-lg overflow-hidden flex-shrink-0 bg-secondary">
                     <img
-                      src={track.coverUrl || "/placeholder.svg"}
+                      src={track.coverUrl || "/icon.png"}
                       alt={getDisplayTitle(track.title, track.artist) || "Unknown Track"}
                       className="absolute inset-0 w-full h-full object-cover"
                     />

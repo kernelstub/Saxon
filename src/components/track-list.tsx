@@ -1,10 +1,11 @@
 import { memo, useEffect, useMemo, useRef, useState } from "react"
 import type { Track, MusicFolder } from "@/lib/types"
 import { formatTime, cn, getDisplayTitle } from "@/lib/utils"
-import { Play, MoreHorizontal, Heart, Folder, ChevronLeft, Trash2, ExternalLink, ListPlus } from "lucide-react"
+import { Play, MoreHorizontal, Heart, Folder, ChevronLeft, Trash2, ExternalLink, ListPlus, Library } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { ArtistLinks } from "@/components/artist-links"
+import { PlaylistCoverCollage } from "@/components/playlist-cover-collage"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -19,6 +20,7 @@ interface TrackListProps {
   currentTrack: Track | null
   onTrackSelect: (track: Track, contextTracks: Track[], contextLabel: string) => void
   onAddToQueue: (track: Track) => void
+  playlistCollageCovers?: boolean
   contextLabel: string
   onSelectArtist: (artist: string) => void
   isPlaying: boolean
@@ -36,6 +38,7 @@ export const TrackList = memo(function TrackList({
   currentTrack,
   onTrackSelect,
   onAddToQueue,
+  playlistCollageCovers = false,
   contextLabel,
   onSelectArtist,
   isPlaying,
@@ -68,6 +71,57 @@ export const TrackList = memo(function TrackList({
     if (selectedFolder) return folders.filter((f) => f.parentId === selectedFolder.id)
     return folders.filter((f) => !f.parentId)
   }, [ignoreFolderFilter, folders, selectedFolder])
+
+  const collageFolderIds = useMemo(() => {
+    if (!playlistCollageCovers) return new Set<string>()
+    return new Set(subFolders.map((f) => f.id))
+  }, [playlistCollageCovers, subFolders])
+
+  const playlistFolderIds = useMemo(() => {
+    if (!playlistCollageCovers) return new Set<string>()
+    if (subFolders.length === 0) return new Set<string>()
+    const folderById = new Map(folders.map((f) => [f.id, f]))
+
+    return new Set(
+      subFolders
+        .filter((folder) => {
+          if (!folder.parentId) return false
+          const parent = folderById.get(folder.parentId)
+          if (!parent) return false
+          return parent.id.endsWith(":playlists") || parent.name === "Playlists"
+        })
+        .map((folder) => folder.id),
+    )
+  }, [playlistCollageCovers, folders, subFolders])
+
+  const { collageCoversByFolderId, collageMissingAudioUrls } = useMemo(() => {
+    const collageCoversByFolderId = new Map<string, Array<string | null>>()
+    const missing = new Set<string>()
+    if (!playlistCollageCovers || collageFolderIds.size === 0) {
+      return { collageCoversByFolderId, collageMissingAudioUrls: [] as string[] }
+    }
+
+    const parentById = new Map<string, string | null>(folders.map((f) => [f.id, f.parentId]))
+
+    const pushCover = (folderId: string, coverUrl: string | null, audioUrl: string) => {
+      const next = collageCoversByFolderId.get(folderId) ?? []
+      if (next.length >= 4) return
+      next.push(coverUrl)
+      collageCoversByFolderId.set(folderId, next)
+      if (!coverUrl) missing.add(audioUrl)
+    }
+
+    for (const track of tracks) {
+      if (!track.folderId) continue
+      let current: string | null = track.folderId
+      while (current) {
+        if (collageFolderIds.has(current)) pushCover(current, track.coverUrl ?? null, track.audioUrl)
+        current = parentById.get(current) ?? null
+      }
+    }
+
+    return { collageCoversByFolderId, collageMissingAudioUrls: Array.from(missing) }
+  }, [playlistCollageCovers, collageFolderIds, folders, tracks])
 
   const scrollAreaRef = useRef<any>(null)
   const viewportRef = useRef<HTMLElement | null>(null)
@@ -172,7 +226,7 @@ export const TrackList = memo(function TrackList({
         <div className="flex items-center gap-3 flex-1 min-w-0">
           <div className="relative w-10 h-10 rounded-lg overflow-hidden flex-shrink-0 bg-secondary">
             <img
-              src={track.coverUrl || "/placeholder.svg"}
+              src={track.coverUrl || "/icon.png"}
               alt={displayTitle || "Unknown Track"}
               className="absolute inset-0 w-full h-full object-cover"
             />
@@ -278,6 +332,12 @@ export const TrackList = memo(function TrackList({
     if (urls.length > 0) onNeedCovers(urls)
   }, [onNeedCovers, displayedTracks, startIndex, endIndex])
 
+  useEffect(() => {
+    if (!onNeedCovers) return
+    if (!playlistCollageCovers) return
+    if (collageMissingAudioUrls.length > 0) onNeedCovers(collageMissingAudioUrls)
+  }, [onNeedCovers, playlistCollageCovers, collageMissingAudioUrls])
+
   return (
     <ScrollArea className="flex-1 h-full" ref={scrollAreaRef}>
       <div className="p-6">
@@ -313,12 +373,23 @@ export const TrackList = memo(function TrackList({
                   onClick={() => onFolderSelect(folder)}
                   className="group flex flex-col items-center gap-2 p-4 rounded-xl bg-secondary/50 hover:bg-secondary cursor-pointer transition-colors"
                 >
-                  <div className="w-16 h-16 rounded-xl bg-muted flex items-center justify-center group-hover:scale-105 transition-transform">
-                    <Folder className="w-8 h-8 text-muted-foreground" />
-                  </div>
+                  {playlistCollageCovers ? (
+                    playlistFolderIds.has(folder.id) && folder.trackCount === 0 ? (
+                      <div className="w-16 h-16 rounded-xl bg-muted flex items-center justify-center transition-transform">
+                        <Library className="w-8 h-8 text-muted-foreground" />
+                      </div>
+                    ) : (
+                      <div className="w-16 h-16 rounded-xl overflow-hidden bg-muted transition-transform">
+                        <PlaylistCoverCollage coverUrls={collageCoversByFolderId.get(folder.id) ?? []} />
+                      </div>
+                    )
+                  ) : (
+                    <div className="w-16 h-16 rounded-xl bg-muted flex items-center justify-center group-hover:scale-105 transition-transform">
+                      <Folder className="w-8 h-8 text-muted-foreground" />
+                    </div>
+                  )}
                   <div className="text-center w-full">
                     <p className="text-sm font-medium truncate">{folder.name}</p>
-                    <p className="text-xs text-muted-foreground">{folder.trackCount} tracks</p>
                   </div>
                 </div>
               ))}

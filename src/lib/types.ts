@@ -55,4 +55,5 @@ export interface AppConfig {
   selectedTheme?: string
   discordRichPresence?: boolean
   navidromeServers?: NavidromeServerConfig[]
+  playlistCollageCovers?: boolean
 }

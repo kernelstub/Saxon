@@ -37,6 +37,7 @@ function App() {
   const [discordRichPresence, setDiscordRichPresence] = useState(false)
   const [discordRpcError, setDiscordRpcError] = useState<string | null>(null)
   const [discordRpcTestSuccessAt, setDiscordRpcTestSuccessAt] = useState<number | null>(null)
+  const [playlistCollageCovers, setPlaylistCollageCovers] = useState(false)
 
   const [folders, setFolders] = useState<MusicFolder[]>([]);
   const [tracks, setTracks] = useState<Track[]>([]);
@@ -312,6 +313,7 @@ function App() {
         }
         if (config.selectedTheme) setSelectedTheme(config.selectedTheme)
         if (config.discordRichPresence !== undefined) setDiscordRichPresence(config.discordRichPresence)
+        if (config.playlistCollageCovers !== undefined) setPlaylistCollageCovers(config.playlistCollageCovers)
 
         try {
           const themeName = config.selectedTheme || "default"
@@ -524,6 +526,13 @@ function App() {
     }
     invoke("load_config").then((c: any) => {
       invoke("save_config", { config: { ...c, discordRichPresence: enabled } })
+    })
+  }, [])
+
+  const handleSavePlaylistCollageCovers = useCallback((enabled: boolean) => {
+    setPlaylistCollageCovers(enabled)
+    invoke("load_config").then((c: any) => {
+      invoke("save_config", { config: { ...c, playlistCollageCovers: enabled } })
     })
   }, [])
 
@@ -1225,6 +1234,7 @@ function App() {
               currentTrack={currentTrack}
               onTrackSelect={handleTrackSelect}
               onAddToQueue={handleAddToQueue}
+              playlistCollageCovers={playlistCollageCovers}
               contextLabel={
                 view === "favorites"
                   ? "Favorites"
@@ -1334,6 +1344,8 @@ function App() {
           testDiscordRichPresence={handleTestDiscordRichPresence}
           discordRpcError={discordRpcError}
           discordRpcTestSuccessAt={discordRpcTestSuccessAt}
+          playlistCollageCovers={playlistCollageCovers}
+          setPlaylistCollageCovers={handleSavePlaylistCollageCovers}
         />
       )}
     </div>

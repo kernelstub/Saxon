@@ -57,7 +57,7 @@ export function PlayerControls({
             <>
               <div className="relative w-14 h-14 rounded-xl overflow-hidden flex-shrink-0 bg-secondary">
                 <img
-                  src={currentTrack.coverUrl || "/placeholder.svg"}
+                  src={currentTrack.coverUrl || "/icon.png"}
                   alt={getDisplayTitle(currentTrack.title, currentTrack.artist) || "Unknown Track"}
                   className="absolute inset-0 w-full h-full object-cover"
                 />

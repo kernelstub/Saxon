@@ -35,6 +35,8 @@ interface SettingsPanelProps {
   testDiscordRichPresence: () => void
   discordRpcError: string | null
   discordRpcTestSuccessAt: number | null
+  playlistCollageCovers: boolean
+  setPlaylistCollageCovers: (enabled: boolean) => void
 }
 
 const eqBands = [
@@ -82,7 +84,9 @@ export function SettingsPanel({
   discordRichPresence,
   setDiscordRichPresence,
   discordRpcError,
-  discordRpcTestSuccessAt
+  discordRpcTestSuccessAt,
+  playlistCollageCovers,
+  setPlaylistCollageCovers
 }: SettingsPanelProps) {
   const [loadedFolders, setLoadedFolders] = useState<string[]>([])
   const [navidromeServers, setNavidromeServers] = useState<NavidromeServerConfig[]>([])
@@ -346,6 +350,19 @@ export function SettingsPanel({
               )}
               <p className="text-xs text-muted-foreground">
                 Discord must be running. Shows current track in your profile.
+              </p>
+            </div>
+
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <Label className="text-sm font-medium flex items-center gap-2">
+                  <Info className="w-4 h-4" />
+                  Playlist Covers
+                </Label>
+                <Switch checked={playlistCollageCovers} onCheckedChange={setPlaylistCollageCovers} />
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Show Spotify-style 4-art collage covers for playlists.
               </p>
             </div>
 

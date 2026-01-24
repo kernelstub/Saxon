@@ -95,6 +95,8 @@ struct AppConfig {
     discord_rich_presence: bool,
     #[serde(default)]
     navidrome_servers: Vec<NavidromeServerConfig>,
+    #[serde(default)]
+    playlist_collage_covers: bool,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]

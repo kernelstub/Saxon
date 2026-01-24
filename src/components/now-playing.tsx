@@ -75,7 +75,7 @@ export function NowPlaying({
           />
           <div className="relative w-full h-full rounded-3xl overflow-hidden shadow-2xl bg-secondary">
             <img
-              src={track.coverUrl || "/placeholder.svg"}
+              src={track.coverUrl || "/icon.png"}
               alt={displayTitle || "Unknown Track"}
               className={cn(
                 "absolute inset-0 w-full h-full object-cover transition-transform duration-700",
