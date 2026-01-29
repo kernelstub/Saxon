@@ -124,8 +124,6 @@ flowchart LR
 | Windows | Visual Studio C++ Build Tools |
 | Linux | WebKit2 GTK + build tools for Tauri |
 
-Absolutely! I can make a concise Markdown section for your project that lists the dependencies and how to install them on different systems. Here's an example:
-
 ## Dependencies
 
 Before running this project, make sure the following dependencies are installed:
